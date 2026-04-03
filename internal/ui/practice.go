@@ -89,20 +89,13 @@ func (m PracticeModel) handleKey(msg tea.KeyMsg) (PracticeModel, tea.Cmd) {
 		// End session early — handled by app
 		return m, nil
 
-	case tea.KeyBackspace:
-		if len(m.typed) > 0 {
-			m.typed = m.typed[:len(m.typed)-1]
-		}
-		return m, nil
-
 	case tea.KeyRunes:
 		m.typed += string(msg.Runes)
-		// Auto-check when typed length matches target
-		if len(m.typed) >= len(m.target) {
-			if m.typed == m.target {
-				return m.submitWord()
-			}
-			// Wrong — save first attempt, show feedback and retry
+		pos := len(m.typed) - 1
+
+		// Check for mistake immediately
+		if pos < len(m.target) && m.typed[pos] != m.target[pos] {
+			// Wrong character — save first attempt, show feedback and retry
 			if m.firstTyped == "" {
 				m.firstTyped = m.typed
 			}
@@ -110,6 +103,11 @@ func (m PracticeModel) handleKey(msg tea.KeyMsg) (PracticeModel, tea.Cmd) {
 			m.typed = ""
 			m.wordStart = time.Now()
 			return m, nil
+		}
+
+		// Word complete and correct
+		if len(m.typed) >= len(m.target) {
+			return m.submitWord()
 		}
 		return m, nil
 	}
@@ -218,7 +216,7 @@ func (m PracticeModel) View() string {
 	}
 
 	// Help
-	b.WriteString(HelpStyle.Render("Type the word above • Backspace to correct • Esc to end session"))
+	b.WriteString(HelpStyle.Render("Type the word above • Mistakes restart the word • Esc to end session"))
 
 	return b.String()
 }
