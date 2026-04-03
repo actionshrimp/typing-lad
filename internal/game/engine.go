@@ -197,12 +197,9 @@ func (e *Engine) SubmitAttempt(target, typed string, durationMs int) (*AttemptRe
 		e.newWords++
 	}
 
-	// Only count correct attempts toward session progress
-	if isCorrect {
-		e.wordsCompleted++
-		e.totalWPM += wpm
-		e.totalAccuracy += accuracy
-	}
+	e.wordsCompleted++
+	e.totalWPM += wpm
+	e.totalAccuracy += accuracy
 
 	// Check level progression
 	stats, err := e.store.GetStats()

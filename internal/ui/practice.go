@@ -68,12 +68,6 @@ func (m PracticeModel) Update(msg tea.Msg) (PracticeModel, tea.Cmd) {
 		if m.engine.SessionDone() {
 			return m, nil // app.go will handle transition to summary
 		}
-		if !msg.IsCorrect {
-			// Retry the same word — reset input but keep target
-			m.typed = ""
-			m.wordStart = time.Now()
-			return m, nil
-		}
 		return m, m.loadNextWord()
 
 	case practiceErrMsg:
@@ -101,14 +95,40 @@ func (m PracticeModel) handleKey(msg tea.KeyMsg) (PracticeModel, tea.Cmd) {
 
 	case tea.KeyRunes:
 		m.typed += string(msg.Runes)
-		// Auto-submit when typed length matches target
+		// Auto-check when typed length matches target
 		if len(m.typed) >= len(m.target) {
-			return m.submitWord()
+			if m.typed == m.target {
+				return m.submitWord()
+			}
+			// Wrong — show feedback and retry without hitting the engine
+			m.lastResult = m.localResult()
+			m.typed = ""
+			m.wordStart = time.Now()
+			return m, nil
 		}
 		return m, nil
 	}
 
 	return m, nil
+}
+
+// localResult builds an AttemptResult for display without involving the engine.
+func (m PracticeModel) localResult() *game.AttemptResult {
+	correct := make([]bool, len(m.target))
+	matches := 0
+	for i := range m.target {
+		if i < len(m.typed) && m.target[i] == m.typed[i] {
+			correct[i] = true
+			matches++
+		}
+	}
+	return &game.AttemptResult{
+		Target:    m.target,
+		Typed:     m.typed,
+		Correct:   correct,
+		Accuracy:  float64(matches) / float64(max(len(m.target), 1)),
+		IsCorrect: false,
+	}
 }
 
 func (m PracticeModel) submitWord() (PracticeModel, tea.Cmd) {
