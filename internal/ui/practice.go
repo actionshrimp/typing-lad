@@ -99,12 +99,6 @@ func (m PracticeModel) handleKey(msg tea.KeyMsg) (PracticeModel, tea.Cmd) {
 		}
 		return m, nil
 
-	case tea.KeyEnter, tea.KeySpace:
-		if len(m.typed) > 0 {
-			return m.submitWord()
-		}
-		return m, nil
-
 	case tea.KeyRunes:
 		m.typed += string(msg.Runes)
 		// Auto-submit when typed length matches target
