@@ -1,0 +1,24 @@
+{
+  "name": "typing-lad",
+  "private": true,
+  "workspaces": [
+    "packages/core",
+    "packages/tui",
+    "packages/web"
+  ],
+  "scripts": {
+    "build": "tsc --build",
+    "dev:tui": "tsx packages/tui/src/main.tsx",
+    "dev:web": "npm run dev --workspace=packages/web",
+    "test:tui": "vitest run --config tests/tui/vitest.config.ts",
+    "test:web": "playwright test --config tests/web/playwright.config.ts"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.52.0",
+    "node-pty": "^1.0.0",
+    "strip-ansi": "^7.1.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.1.0"
+  }
+}

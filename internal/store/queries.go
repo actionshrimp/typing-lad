@@ -196,6 +196,26 @@ func scanWordProgressRows(rows *sql.Rows) ([]WordProgress, error) {
 	return results, rows.Err()
 }
 
+// GetRandomPracticedWords returns random words that have been practiced at least once,
+// from levels up to maxLevel.
+func (db *DB) GetRandomPracticedWords(maxLevel words.Level, limit int) ([]WordProgress, error) {
+	rows, err := db.conn.Query(`
+		SELECT w.id, w.text, w.level, w.rank,
+			wp.ease_factor, wp.interval_days, wp.repetitions,
+			wp.next_review, wp.last_reviewed,
+			wp.times_correct, wp.times_incorrect
+		FROM words w
+		JOIN word_progress wp ON w.id = wp.word_id
+		WHERE w.level <= ? AND wp.repetitions > 0
+		ORDER BY RANDOM()
+		LIMIT ?`, maxLevel, limit)
+	if err != nil {
+		return nil, fmt.Errorf("query random practiced words: %w", err)
+	}
+	defer rows.Close()
+	return scanWordProgressRows(rows)
+}
+
 // SaveSession records a completed practice session.
 func (db *DB) SaveSession(s *SessionRecord) error {
 	result, err := db.conn.Exec(`

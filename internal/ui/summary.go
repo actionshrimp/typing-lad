@@ -10,14 +10,20 @@ import (
 
 // SummaryModel displays the post-session summary.
 type SummaryModel struct {
-	result *game.SessionResult
-	width  int
-	height int
+	result          *game.SessionResult
+	paragraphResult *game.ParagraphResult
+	width           int
+	height          int
 }
 
 // NewSummaryModel creates a summary view from a session result.
 func NewSummaryModel(result *game.SessionResult) SummaryModel {
 	return SummaryModel{result: result}
+}
+
+// NewParagraphSummaryModel creates a summary view from a paragraph result.
+func NewParagraphSummaryModel(result *game.ParagraphResult) SummaryModel {
+	return SummaryModel{paragraphResult: result}
 }
 
 func (m SummaryModel) Init() tea.Cmd {
@@ -42,6 +48,9 @@ func (m SummaryModel) ShouldReturn(msg tea.Msg) bool {
 }
 
 func (m SummaryModel) View() string {
+	if m.paragraphResult != nil {
+		return m.viewParagraph()
+	}
 	if m.result == nil {
 		return "No session data."
 	}
@@ -68,6 +77,42 @@ func (m SummaryModel) View() string {
 	for _, row := range rows {
 		b.WriteString(StatLabelStyle.Render(row.label))
 		if row.label == "Accuracy" {
+			b.WriteString(AccuracyStyle(r.Accuracy).Render(row.value))
+		} else {
+			b.WriteString(StatValueStyle.Render(row.value))
+		}
+		b.WriteString("\n")
+	}
+
+	b.WriteString("\n")
+	b.WriteString(HelpStyle.Render("Press Enter to return to menu"))
+
+	return b.String()
+}
+
+func (m SummaryModel) viewParagraph() string {
+	var b strings.Builder
+
+	b.WriteString(TitleStyle.Render("Paragraph Complete!"))
+	b.WriteString("\n\n")
+
+	r := m.paragraphResult
+	duration := r.EndedAt.Sub(r.StartedAt)
+
+	rows := []struct {
+		label    string
+		value    string
+		accuracy bool
+	}{
+		{"Words Correct", fmt.Sprintf("%d / %d", r.WordsCorrect, r.WordsTotal), false},
+		{"WPM", fmt.Sprintf("%.1f", r.WPM), false},
+		{"Accuracy", fmt.Sprintf("%.0f%%", r.Accuracy*100), true},
+		{"Duration", fmt.Sprintf("%.0f seconds", duration.Seconds()), false},
+	}
+
+	for _, row := range rows {
+		b.WriteString(StatLabelStyle.Render(row.label))
+		if row.accuracy {
 			b.WriteString(AccuracyStyle(r.Accuracy).Render(row.value))
 		} else {
 			b.WriteString(StatValueStyle.Render(row.value))

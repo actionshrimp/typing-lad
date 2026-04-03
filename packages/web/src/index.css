@@ -1,0 +1,76 @@
+@import "tailwindcss";
+
+@theme {
+  --color-surface: #111111;
+  --color-surface-raised: #1a1a1a;
+  --color-surface-recessed: #0e0e0e;
+  --color-border: #2a2a2a;
+  --color-border-subtle: #1f1f1f;
+  --color-text-primary: #fafafa;
+  --color-text-secondary: #a0a0a0;
+  --color-text-dim: #626262;
+  --color-accent: #FE9D00;
+  --color-accent-dim: rgba(254, 157, 0, 0.15);
+  --color-correct: #04B575;
+  --color-incorrect: #FF4672;
+  --color-cursor: #FE9D00;
+  --color-info: #00CED1;
+  --color-purple: #7D56F4;
+
+  --font-sans: "Space Grotesk", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", "Fira Code", monospace;
+}
+
+@layer base {
+  body {
+    background: var(--color-surface);
+    color: var(--color-text-primary);
+    font-family: var(--font-sans);
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  #root {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+}
+
+/* Utility classes for typing feedback */
+.char-correct { color: var(--color-correct); }
+.char-incorrect { color: var(--color-incorrect); text-decoration: underline; }
+.char-untyped { color: var(--color-text-dim); }
+.char-cursor { color: var(--color-text-primary); border-bottom: 2px solid var(--color-accent); }
+.char-completed { color: var(--color-text-dim); opacity: 0.3; }
+
+/* Accuracy color classes */
+.accuracy-good { color: var(--color-correct); }
+.accuracy-ok { color: #FFD700; }
+.accuracy-bad { color: var(--color-incorrect); }
+
+/* Material Symbols sizing */
+.material-symbols-outlined {
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+
+/* Recharts override for dark theme */
+.recharts-cartesian-grid-horizontal line,
+.recharts-cartesian-grid-vertical line {
+  stroke: var(--color-border);
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 3px; }
+
+/* Blinking cursor animation */
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+.cursor-blink {
+  animation: blink 1s step-end infinite;
+}

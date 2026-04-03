@@ -1,6 +1,8 @@
 package app
 
 import (
+	"math/rand"
+
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/dave/typing-lad/internal/game"
 	"github.com/dave/typing-lad/internal/store"
@@ -12,19 +14,21 @@ type view int
 const (
 	viewMenu view = iota
 	viewPractice
+	viewParagraph
 	viewSummary
 	viewStats
 )
 
 // Model is the top-level Bubbletea model that routes between views.
 type Model struct {
-	db       *store.DB
-	engine   *game.Engine
-	current  view
-	menu     ui.MenuModel
-	practice ui.PracticeModel
-	summary  ui.SummaryModel
-	stats    ui.StatsModel
+	db        *store.DB
+	engine    *game.Engine
+	current   view
+	menu      ui.MenuModel
+	practice  ui.PracticeModel
+	paragraph ui.ParagraphModel
+	summary   ui.SummaryModel
+	stats     ui.StatsModel
 }
 
 // New creates a new app model.
@@ -54,6 +58,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.updateMenu(msg)
 	case viewPractice:
 		return m.updatePractice(msg)
+	case viewParagraph:
+		return m.updateParagraph(msg)
 	case viewSummary:
 		return m.updateSummary(msg)
 	case viewStats:
@@ -67,6 +73,11 @@ func (m Model) updateMenu(msg tea.Msg) (tea.Model, tea.Cmd) {
 	sel := m.menu.Selected(msg)
 	switch sel {
 	case ui.MenuPractice:
+		if rand.Intn(10) < 3 { // ~30% paragraph mode
+			m.paragraph = ui.NewParagraphModel(m.engine)
+			m.current = viewParagraph
+			return m, m.paragraph.Init()
+		}
 		m.practice = ui.NewPracticeModel(m.engine)
 		m.current = viewPractice
 		return m, m.practice.Init()
@@ -117,6 +128,37 @@ func (m Model) updatePractice(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+func (m Model) updateParagraph(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if m.paragraph.Escaped(msg) || m.paragraph.Done() {
+		if result := m.paragraph.Result(); result != nil {
+			m.summary = ui.NewParagraphSummaryModel(result)
+		} else {
+			// Escaped early with no result — end session normally
+			result, err := m.paragraph.Engine().EndSession()
+			if err != nil {
+				m.current = viewMenu
+				return m, nil
+			}
+			m.summary = ui.NewSummaryModel(result)
+		}
+		m.current = viewSummary
+		return m, m.summary.Init()
+	}
+
+	var cmd tea.Cmd
+	m.paragraph, cmd = m.paragraph.Update(msg)
+
+	if m.paragraph.Done() {
+		if result := m.paragraph.Result(); result != nil {
+			m.summary = ui.NewParagraphSummaryModel(result)
+		}
+		m.current = viewSummary
+		return m, m.summary.Init()
+	}
+
+	return m, cmd
+}
+
 func (m Model) updateSummary(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if m.summary.ShouldReturn(msg) {
 		// Refresh engine to pick up level changes
@@ -152,6 +194,8 @@ func (m Model) View() string {
 		return m.menu.View()
 	case viewPractice:
 		return m.practice.View()
+	case viewParagraph:
+		return m.paragraph.View()
 	case viewSummary:
 		return m.summary.View()
 	case viewStats:

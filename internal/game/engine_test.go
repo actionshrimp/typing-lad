@@ -225,3 +225,93 @@ func TestPerCharCorrectness(t *testing.T) {
 		}
 	}
 }
+
+func TestGenerateParagraph(t *testing.T) {
+	engine, _ := newTestEngine(t)
+	engine.StartSession()
+
+	words, err := engine.GenerateParagraph(10)
+	if err != nil {
+		t.Fatalf("GenerateParagraph: %v", err)
+	}
+	if len(words) != 10 {
+		t.Fatalf("expected 10 words, got %d", len(words))
+	}
+	for i, w := range words {
+		if w == "" {
+			t.Errorf("word %d is empty", i)
+		}
+	}
+}
+
+func TestSubmitParagraphAllCorrect(t *testing.T) {
+	engine, _ := newTestEngine(t)
+	engine.StartSession()
+
+	paraWords, err := engine.GenerateParagraph(5)
+	if err != nil {
+		t.Fatalf("GenerateParagraph: %v", err)
+	}
+
+	typed := ""
+	for i, w := range paraWords {
+		if i > 0 {
+			typed += " "
+		}
+		typed += w
+	}
+
+	start := engine.startedAt
+	result, err := engine.SubmitParagraph(paraWords, typed, 5000, start)
+	if err != nil {
+		t.Fatalf("SubmitParagraph: %v", err)
+	}
+
+	if result.Accuracy != 1.0 {
+		t.Errorf("expected accuracy 1.0, got %f", result.Accuracy)
+	}
+	if result.WordsCorrect != 5 {
+		t.Errorf("expected 5 correct, got %d", result.WordsCorrect)
+	}
+	if result.WordsTotal != 5 {
+		t.Errorf("expected 5 total, got %d", result.WordsTotal)
+	}
+	if result.WPM <= 0 {
+		t.Errorf("expected positive WPM, got %f", result.WPM)
+	}
+}
+
+func TestSubmitParagraphWithErrors(t *testing.T) {
+	engine, _ := newTestEngine(t)
+	engine.StartSession()
+
+	paraWords, err := engine.GenerateParagraph(3)
+	if err != nil {
+		t.Fatalf("GenerateParagraph: %v", err)
+	}
+
+	// Type the first word correctly, second wrong, third correct
+	typed := paraWords[0] + " zzzzz " + paraWords[2]
+
+	start := engine.startedAt
+	result, err := engine.SubmitParagraph(paraWords, typed, 3000, start)
+	if err != nil {
+		t.Fatalf("SubmitParagraph: %v", err)
+	}
+
+	if result.WordsTotal != 3 {
+		t.Errorf("expected 3 total, got %d", result.WordsTotal)
+	}
+	if result.PerWordCorrect[0] != true {
+		t.Error("word 0 should be correct")
+	}
+	if result.PerWordCorrect[1] != false {
+		t.Error("word 1 should be incorrect")
+	}
+	if result.PerWordCorrect[2] != true {
+		t.Error("word 2 should be correct")
+	}
+	if result.Accuracy >= 1.0 {
+		t.Error("expected accuracy < 1.0")
+	}
+}
