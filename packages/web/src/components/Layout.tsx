@@ -3,15 +3,20 @@ import React from "react";
 export type NavTab = "home" | "practice" | "stats" | "save-restore";
 export type ActiveMode = "word" | "paragraph" | null;
 
+type SyncStatus = "none" | "synced" | "needs-permission" | "unavailable";
+
 interface LayoutProps {
   activeTab: NavTab;
   activeMode: ActiveMode;
   onNavigate: (tab: NavTab) => void;
   onModeSelect: (mode: "word" | "paragraph") => void;
+  syncStatus: SyncStatus;
+  onEnableSync: () => void;
+  onDisableSync: () => void;
   children: React.ReactNode;
 }
 
-export function Layout({ activeTab, activeMode, onNavigate, onModeSelect, children }: LayoutProps) {
+export function Layout({ activeTab, activeMode, onNavigate, onModeSelect, syncStatus, onEnableSync, onDisableSync, children }: LayoutProps) {
   const navItems: { label: string; tab: NavTab }[] = [
     { label: "Practice", tab: "practice" },
     { label: "Stats", tab: "stats" },
@@ -45,10 +50,31 @@ export function Layout({ activeTab, activeMode, onNavigate, onModeSelect, childr
           ))}
         </nav>
 
-        <div className="flex items-center gap-2 text-xs text-text-dim">
-          <span className="material-symbols-outlined text-sm">storage</span>
-          localStorage
-        </div>
+        {/* Sync status indicator */}
+        {syncStatus === "synced" ? (
+          <button
+            onClick={onDisableSync}
+            className="flex items-center gap-1.5 text-xs text-correct hover:text-correct/80 transition-colors"
+            title="Auto-syncing to local file. Click to disconnect."
+          >
+            <span className="material-symbols-outlined text-sm">sync</span>
+            File Sync
+          </button>
+        ) : syncStatus === "unavailable" ? (
+          <div className="flex items-center gap-1.5 text-xs text-text-dim">
+            <span className="material-symbols-outlined text-sm">storage</span>
+            localStorage
+          </div>
+        ) : (
+          <button
+            onClick={onEnableSync}
+            className="flex items-center gap-1.5 text-xs text-text-dim hover:text-accent transition-colors"
+            title="Enable auto file sync (Chrome)"
+          >
+            <span className="material-symbols-outlined text-sm">sync_disabled</span>
+            File Sync Off
+          </button>
+        )}
       </header>
 
       <div className="flex flex-1 overflow-hidden">

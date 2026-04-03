@@ -1,7 +1,12 @@
 import React from "react";
 import { createRoot } from "react-dom/client";
 import { Store } from "@typing-lad/core";
-import { loadFromLocalStorage, saveToLocalStorage } from "./persistence";
+import {
+  loadFromLocalStorage,
+  saveToLocalStorage,
+  tryRestoreFileSync,
+  loadFromFile,
+} from "./persistence";
 import { App } from "./components/App";
 import "./index.css";
 
@@ -14,8 +19,28 @@ if (saved) store.loadData(saved);
 
 const root = createRoot(document.getElementById("root")!);
 
-function handleSave() {
-  saveToLocalStorage(store.getData());
+// Try to restore file sync and load fresher data from the synced file
+async function init() {
+  const handle = await tryRestoreFileSync();
+  if (handle) {
+    const fileData = await loadFromFile(handle);
+    if (fileData) {
+      store.loadData(fileData);
+      saveToLocalStorage(fileData);
+    }
+  }
+
+  function handleSave() {
+    saveToLocalStorage(store.getData());
+  }
+
+  root.render(
+    <App
+      store={store}
+      onSave={handleSave}
+      initialFileHandle={handle}
+    />
+  );
 }
 
-root.render(<App store={store} onSave={handleSave} />);
+init();

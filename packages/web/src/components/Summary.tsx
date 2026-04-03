@@ -15,7 +15,7 @@ interface SummaryProps {
   sessionResult?: SessionResult;
   paragraphResult?: ParagraphResult;
   onContinue: () => void;
-  onRetry: (mode: "word" | "paragraph") => void;
+  onRetry: () => void;
   onExport: () => void;
 }
 
@@ -147,7 +147,7 @@ export function Summary({ store, sessionResult, paragraphResult, onContinue, onR
       {/* Action buttons */}
       <div className="flex gap-3 mb-8">
         <button
-          onClick={() => onRetry(mode)}
+          onClick={onRetry}
           className="px-6 py-2.5 rounded-lg bg-accent text-surface font-semibold text-sm hover:bg-accent/90 transition-colors"
         >
           Try Again

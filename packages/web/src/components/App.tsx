@@ -5,7 +5,16 @@ import {
   type SessionResult,
   type ParagraphResult,
 } from "@typing-lad/core";
-import { exportToFile, importFromFile, saveToLocalStorage } from "../persistence";
+import {
+  exportToFile,
+  importFromFile,
+  saveToLocalStorage,
+  saveToFile,
+  enableFileSync,
+  disableFileSync,
+  requestFileSyncPermission,
+  hasFileSystemAccess,
+} from "../persistence";
 import { Layout, type NavTab, type ActiveMode } from "./Layout";
 import { Menu } from "./Menu";
 import { Practice } from "./Practice";
@@ -15,33 +24,76 @@ import { Stats } from "./Stats";
 
 type ViewState = "home" | "practice" | "paragraph" | "summary" | "stats" | "save-restore";
 
+type SyncStatus = "none" | "synced" | "needs-permission" | "unavailable";
+
 interface AppProps {
   store: Store;
   onSave: () => void;
+  initialFileHandle: FileSystemFileHandle | null;
 }
 
-export function App({ store, onSave }: AppProps) {
+export function App({ store, onSave, initialFileHandle }: AppProps) {
   const [view, setView] = useState<ViewState>("home");
   const [engine, setEngine] = useState<Engine>(() => new Engine(store));
   const [sessionResult, setSessionResult] = useState<SessionResult | undefined>();
   const [paragraphResult, setParagraphResult] = useState<ParagraphResult | undefined>();
+  const [fileHandle, setFileHandle] = useState<FileSystemFileHandle | null>(initialFileHandle);
 
   const viewRef = useRef(view);
   viewRef.current = view;
+  const fileHandleRef = useRef(fileHandle);
+  fileHandleRef.current = fileHandle;
+
+  const syncStatus: SyncStatus = !hasFileSystemAccess()
+    ? "unavailable"
+    : fileHandle
+    ? "synced"
+    : "none";
+
+  // Save to both localStorage and file (if synced)
+  const saveAll = useCallback(() => {
+    const data = store.getData();
+    saveToLocalStorage(data);
+    if (fileHandleRef.current) {
+      saveToFile(fileHandleRef.current, data);
+    }
+  }, [store]);
+
+  const handleEnableSync = useCallback(async () => {
+    const handle = await enableFileSync();
+    if (handle) {
+      setFileHandle(handle);
+      // Write current data to the new file immediately
+      await saveToFile(handle, store.getData());
+    }
+  }, [store]);
+
+  const handleDisableSync = useCallback(async () => {
+    await disableFileSync();
+    setFileHandle(null);
+  }, []);
+
+  const handleRequestPermission = useCallback(async () => {
+    const handle = await requestFileSyncPermission();
+    if (handle) setFileHandle(handle);
+  }, []);
 
   const startPractice = useCallback(
-    (mode: "word" | "paragraph") => {
+    (mode: "word" | "paragraph" | "random") => {
       const newEngine = new Engine(store);
       setEngine(newEngine);
 
-      // Check for forced mode (testing support)
       const forceMode = (window as any).__forceMode;
       if (forceMode === "paragraph") {
         setView("paragraph");
         return;
       }
 
-      setView(mode === "paragraph" ? "paragraph" : "practice");
+      if (mode === "random") {
+        setView(Math.random() < 0.7 ? "practice" : "paragraph");
+      } else {
+        setView(mode === "paragraph" ? "paragraph" : "practice");
+      }
     },
     [store]
   );
@@ -49,7 +101,7 @@ export function App({ store, onSave }: AppProps) {
   const handleNavigate = useCallback(
     (tab: NavTab) => {
       if (tab === "home") setView("home");
-      else if (tab === "practice") startPractice("word");
+      else if (tab === "practice") startPractice("random");
       else if (tab === "stats") setView("stats");
       else if (tab === "save-restore") setView("save-restore");
     },
@@ -69,46 +121,43 @@ export function App({ store, onSave }: AppProps) {
         setView("stats");
         return;
       }
-      startPractice("word");
+      startPractice("random");
     },
     [startPractice]
   );
 
   const handlePracticeDone = useCallback(
     (result: SessionResult) => {
-      onSave();
+      saveAll();
       setSessionResult(result);
       setParagraphResult(undefined);
       setView("summary");
     },
-    [onSave]
+    [saveAll]
   );
 
   const handleParagraphDone = useCallback(
     (result: ParagraphResult) => {
-      onSave();
+      saveAll();
       setParagraphResult(result);
       setSessionResult(undefined);
       setView("summary");
     },
-    [onSave]
+    [saveAll]
   );
 
   const handleEscape = useCallback(() => {
-    onSave();
+    saveAll();
     setView("home");
-  }, [onSave]);
+  }, [saveAll]);
 
   const handleSummaryDone = useCallback(() => {
     setView("home");
   }, []);
 
-  const handleSummaryRetry = useCallback(
-    (mode: "word" | "paragraph") => {
-      startPractice(mode);
-    },
-    [startPractice]
-  );
+  const handleSummaryRetry = useCallback(() => {
+    startPractice("random");
+  }, [startPractice]);
 
   const handleStatsBack = useCallback(() => {
     setView("home");
@@ -123,12 +172,14 @@ export function App({ store, onSave }: AppProps) {
     if (data) {
       store.loadData(data);
       saveToLocalStorage(data);
+      if (fileHandleRef.current) {
+        await saveToFile(fileHandleRef.current, data);
+      }
       setEngine(new Engine(store));
       setView("home");
     }
   }, [store]);
 
-  // Global Escape key handler
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === "Escape") {
@@ -161,6 +212,9 @@ export function App({ store, onSave }: AppProps) {
       activeMode={getActiveMode()}
       onNavigate={handleNavigate}
       onModeSelect={handleModeSelect}
+      syncStatus={syncStatus}
+      onEnableSync={handleEnableSync}
+      onDisableSync={handleDisableSync}
     >
       {view === "home" && (
         <Menu
@@ -231,6 +285,42 @@ export function App({ store, onSave }: AppProps) {
               <span className="text-xs text-text-dim">Import saved JSON data</span>
             </button>
           </div>
+
+          {/* File sync section */}
+          {syncStatus !== "unavailable" && (
+            <div className="mt-6 p-4 rounded-lg border border-border bg-surface-raised">
+              <div className="text-[10px] font-semibold tracking-[0.3em] text-text-dim uppercase mb-3">
+                Auto File Sync (Chrome)
+              </div>
+              {syncStatus === "synced" ? (
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-sm text-correct">
+                    <span className="material-symbols-outlined text-base">sync</span>
+                    Syncing to local file
+                  </div>
+                  <button
+                    onClick={handleDisableSync}
+                    className="text-xs text-text-dim hover:text-incorrect transition-colors"
+                  >
+                    Disconnect
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-text-secondary">
+                    Auto-save progress to a local JSON file after every session.
+                  </p>
+                  <button
+                    onClick={handleEnableSync}
+                    className="px-3 py-1.5 rounded border border-accent/50 text-accent text-xs font-medium hover:bg-accent-dim transition-colors whitespace-nowrap ml-4"
+                  >
+                    Choose File
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
           <p className="mt-4 text-xs text-text-dim">Press Escape to return home.</p>
         </div>
       )}
