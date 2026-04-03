@@ -150,7 +150,7 @@ export function Summary({ store, sessionResult, paragraphResult, onContinue, onR
           onClick={onRetry}
           className="px-6 py-2.5 rounded-lg bg-accent text-surface font-semibold text-sm hover:bg-accent/90 transition-colors"
         >
-          Try Again
+          Next Session
         </button>
         <button
           onClick={onExport}

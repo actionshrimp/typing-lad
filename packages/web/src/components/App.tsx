@@ -90,7 +90,7 @@ export function App({ store, onSave, initialFileHandle }: AppProps) {
       }
 
       if (mode === "random") {
-        setView(Math.random() < 0.7 ? "practice" : "paragraph");
+        setView(Math.random() < 0.6 ? "practice" : "paragraph");
       } else {
         setView(mode === "paragraph" ? "paragraph" : "practice");
       }
