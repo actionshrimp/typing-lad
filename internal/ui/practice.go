@@ -15,6 +15,7 @@ type PracticeModel struct {
 	target     string
 	typed      string
 	wordStart  time.Time
+	firstTyped string // first attempt's typed text (empty if no failed attempts yet)
 	lastResult *game.AttemptResult
 	err        error
 	width      int
@@ -59,6 +60,7 @@ func (m PracticeModel) Update(msg tea.Msg) (PracticeModel, tea.Cmd) {
 	case nextWordMsg:
 		m.target = string(msg)
 		m.typed = ""
+		m.firstTyped = ""
 		m.wordStart = time.Now()
 		m.lastResult = nil
 		return m, nil
@@ -100,7 +102,10 @@ func (m PracticeModel) handleKey(msg tea.KeyMsg) (PracticeModel, tea.Cmd) {
 			if m.typed == m.target {
 				return m.submitWord()
 			}
-			// Wrong — show feedback and retry without hitting the engine
+			// Wrong — save first attempt, show feedback and retry
+			if m.firstTyped == "" {
+				m.firstTyped = m.typed
+			}
 			m.lastResult = m.localResult()
 			m.typed = ""
 			m.wordStart = time.Now()
@@ -135,10 +140,16 @@ func (m PracticeModel) submitWord() (PracticeModel, tea.Cmd) {
 	duration := time.Since(m.wordStart).Milliseconds()
 	target := m.target
 	typed := m.typed
+	firstTyped := m.firstTyped
 	engine := m.engine
 
 	return m, func() tea.Msg {
-		result, err := engine.SubmitAttempt(target, typed, int(duration))
+		// Score based on first attempt if there were retries
+		scoreTyped := typed
+		if firstTyped != "" {
+			scoreTyped = firstTyped
+		}
+		result, err := engine.SubmitAttempt(target, scoreTyped, int(duration))
 		if err != nil {
 			return practiceErrMsg(err)
 		}
