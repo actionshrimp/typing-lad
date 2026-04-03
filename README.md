@@ -60,4 +60,3 @@ tests/
 - **Core**: TypeScript, SM-2 spaced repetition
 - **Web**: React, Vite, Tailwind CSS v4, Recharts
 - **TUI**: React, [Ink](https://github.com/vadimdemedes/ink)
-- **Legacy Go TUI**: [Bubbletea](https://github.com/charmbracelet/bubbletea) + [modernc.org/sqlite](https://pkg.go.dev/modernc.org/sqlite)

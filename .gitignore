@@ -1,9 +1,7 @@
-.typing-lad-bin
-*.db
-*.sqlite
 node_modules/
 dist/
 test-results/
 design/
 stitch_typing_lad_ui_design.zip
 *.tsbuildinfo
+.typing-lad-bin
