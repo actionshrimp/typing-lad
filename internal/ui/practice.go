@@ -68,6 +68,12 @@ func (m PracticeModel) Update(msg tea.Msg) (PracticeModel, tea.Cmd) {
 		if m.engine.SessionDone() {
 			return m, nil // app.go will handle transition to summary
 		}
+		if !msg.IsCorrect {
+			// Retry the same word — reset input but keep target
+			m.typed = ""
+			m.wordStart = time.Now()
+			return m, nil
+		}
 		return m, m.loadNextWord()
 
 	case practiceErrMsg:

@@ -197,6 +197,23 @@ func TestLevelProgression(t *testing.T) {
 	}
 }
 
+func TestIncorrectAttemptDoesNotCountAsCompleted(t *testing.T) {
+	engine, _ := newTestEngine(t)
+	engine.StartSession()
+
+	word, _ := engine.NextWord()
+	engine.SubmitAttempt(word, "wrong", 1000)
+	if engine.WordsCompleted() != 0 {
+		t.Errorf("incorrect attempt should not increment wordsCompleted, got %d", engine.WordsCompleted())
+	}
+
+	// Correct attempt should count
+	engine.SubmitAttempt(word, word, 1000)
+	if engine.WordsCompleted() != 1 {
+		t.Errorf("correct attempt should increment wordsCompleted, got %d", engine.WordsCompleted())
+	}
+}
+
 func TestPerCharCorrectness(t *testing.T) {
 	engine, _ := newTestEngine(t)
 	engine.StartSession()
