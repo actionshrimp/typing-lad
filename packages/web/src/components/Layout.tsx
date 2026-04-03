@@ -94,7 +94,14 @@ export function Layout({ activeTab, activeMode, onNavigate, onModeSelect, childr
           <span className="inline-block w-1.5 h-1.5 rounded-full bg-correct"></span>
           System Online
         </span>
-        <span>v1.0</span>
+        <a
+          href="https://github.com/actionshrimp/typing-lad"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="hover:text-text-secondary transition-colors"
+        >
+          GitHub
+        </a>
       </footer>
     </div>
   );

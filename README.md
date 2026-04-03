@@ -1,6 +1,6 @@
 # Typing Lad
 
-A TUI touch typing tutor with spaced repetition, built for learning split/ergo keyboards.
+A touch typing tutor with spaced repetition, available as a [web app](https://actionshrimp.com/typing-lad/) and a terminal UI.
 
 Words are introduced progressively by keyboard zone:
 
@@ -9,34 +9,55 @@ Words are introduced progressively by keyboard zone:
 3. **Bottom Row** — adds `zxcvbnm`
 4. **Full Alpha** — longer words using all keys
 
-Within each zone, common/short words come first. Progress persists between sessions via SQLite, and an SM-2 spaced repetition algorithm schedules reviews.
+Within each zone, common/short words come first. An SM-2 spaced repetition algorithm schedules reviews so you spend time on words you struggle with.
 
-## Install
+## Web App
+
+**[Try it now](https://actionshrimp.com/typing-lad/)** — no install needed, runs entirely in the browser.
+
+- **Word Mode** — type individual words in a 20-word session
+- **Paragraph Mode** — type full sentences
+- Session summary with per-word velocity chart
+- Stats dashboard with speed progression, error heatmap, and session history
+- Progress saved to localStorage (export/import as JSON)
+
+## Terminal UI
 
 ```
-go install github.com/dave/typing-lad@latest
-```
-
-Or build from source:
-
-```
-git clone https://github.com/dave/typing-lad.git
+git clone https://github.com/actionshrimp/typing-lad.git
 cd typing-lad
-go build -o typing-lad .
+npm install
+npm run dev:tui
 ```
 
-## Usage
+Same practice modes and SRS engine, rendered in the terminal via [Ink](https://github.com/vadimdemedes/ink). Progress saved to `~/.config/typing-lad/data.json`.
+
+## Development
 
 ```
-./typing-lad
+npm install              # install dependencies
+npm run dev:web          # start web dev server (localhost:5173)
+npm run dev:tui          # start terminal UI
+npx tsc --build          # type-check all packages
+npm run test:web         # Playwright E2E tests
+npm run test:tui         # Vitest TUI tests
 ```
 
-Navigate the menu with arrow keys and Enter. In practice mode, just type — words auto-submit when you finish. If you mistype, the word repeats until you get it right.
+### Project Structure
 
-Data is stored in `~/.config/typing-lad/typing-lad.db` (or the platform equivalent).
+```
+packages/
+  core/    — shared engine, SRS algorithm, word lists, store
+  web/     — React + Vite + Tailwind CSS + Recharts
+  tui/     — React + Ink terminal UI
+tests/
+  web/     — Playwright E2E tests
+  tui/     — Vitest + node-pty tests
+```
 
 ## Tech Stack
 
-- [Bubbletea](https://github.com/charmbracelet/bubbletea) + [Lipgloss](https://github.com/charmbracelet/lipgloss) for the TUI
-- [modernc.org/sqlite](https://pkg.go.dev/modernc.org/sqlite) for persistence (pure Go, no CGO)
-- SM-2 spaced repetition for review scheduling
+- **Core**: TypeScript, SM-2 spaced repetition
+- **Web**: React, Vite, Tailwind CSS v4, Recharts
+- **TUI**: React, [Ink](https://github.com/vadimdemedes/ink)
+- **Legacy Go TUI**: [Bubbletea](https://github.com/charmbracelet/bubbletea) + [modernc.org/sqlite](https://pkg.go.dev/modernc.org/sqlite)
