@@ -140,6 +140,7 @@ export function Zombie({ engine, onDone, onEscape }: ZombieProps) {
                 style={{
                   left: `${z.screenX * 100}%`,
                   top: `${z.screenY * 100}%`,
+                  zIndex: z.isTargeted ? 10 : 1,
                 }}
               >
                 <div

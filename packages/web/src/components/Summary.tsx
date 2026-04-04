@@ -34,10 +34,10 @@ export function Summary({ store, sessionResult, paragraphResult, onContinue, onR
     (e: KeyboardEvent) => {
       if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
-        onContinue();
+        onRetry();
       }
     },
-    [onContinue]
+    [onRetry]
   );
 
   useEffect(() => {
