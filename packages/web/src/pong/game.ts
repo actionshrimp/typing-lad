@@ -121,6 +121,14 @@ export class PongGame {
   private rafId = 0;
   private running = false;
 
+  // Time scale (bullet time)
+  private timeScale = 2.0; // current effective time scale
+  private targetTimeScale = 2.0; // what we're lerping toward
+  private readonly SLOW_SCALE = 0.5;
+  private readonly FAST_SCALE = 2.0;
+  private readonly TIME_LERP_SPEED = 4.0; // how fast we transition (per real second)
+  private wasSlow = false; // track transitions for sound trigger
+
   // Scoring flash
   private scoreFlashTimer = 0;
 
@@ -400,7 +408,30 @@ export class PongGame {
     if (!this.running) return;
     this.rafId = requestAnimationFrame(this.tick);
 
-    const dt = Math.min(this.clock.getDelta(), 0.05); // cap dt
+    const realDt = Math.min(this.clock.getDelta(), 0.05); // cap dt
+
+    // Determine target time scale: slow when ball in player half heading toward player
+    const isSlow = !this.serving && !this.gameOver &&
+      this.ballX < FIELD_W / 2 && this.ballVx < 0;
+    this.targetTimeScale = isSlow ? this.SLOW_SCALE : this.FAST_SCALE;
+
+    // Trigger bullet-time sounds on transitions
+    if (isSlow && !this.wasSlow) {
+      this.playBulletTimeSound();
+    } else if (!isSlow && this.wasSlow) {
+      this.playBulletTimeExitSound();
+    }
+    this.wasSlow = isSlow;
+
+    // Smoothly lerp current time scale toward target
+    const lerpDelta = this.TIME_LERP_SPEED * realDt;
+    if (Math.abs(this.timeScale - this.targetTimeScale) < lerpDelta) {
+      this.timeScale = this.targetTimeScale;
+    } else {
+      this.timeScale += Math.sign(this.targetTimeScale - this.timeScale) * lerpDelta;
+    }
+
+    const dt = realDt * this.timeScale;
 
     this.updateServe(dt);
     this.updateBall(dt);
@@ -814,6 +845,82 @@ export class PongGame {
     osc.connect(gain).connect(ctx.destination);
     osc.start(ctx.currentTime);
     osc.stop(ctx.currentTime + 0.02);
+  }
+
+  private playBulletTimeSound(): void {
+    if (!this.audioCtx) return;
+    const ctx = this.audioCtx;
+    const t = ctx.currentTime;
+
+    // Descending pitch sweep (the "whoooosh" down)
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(400, t);
+    osc.frequency.exponentialRampToValueAtTime(80, t + 0.35);
+    const oscGain = ctx.createGain();
+    oscGain.gain.setValueAtTime(0.12, t);
+    oscGain.gain.exponentialRampToValueAtTime(0.001, t + 0.4);
+    osc.connect(oscGain).connect(ctx.destination);
+    osc.start(t);
+    osc.stop(t + 0.4);
+
+    // Filtered noise swoosh
+    const bufferSize = Math.floor(ctx.sampleRate * 0.3);
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.15));
+    }
+    const noise = ctx.createBufferSource();
+    noise.buffer = buffer;
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.setValueAtTime(2000, t);
+    lp.frequency.exponentialRampToValueAtTime(200, t + 0.3);
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.setValueAtTime(0.08, t);
+    noiseGain.gain.exponentialRampToValueAtTime(0.001, t + 0.3);
+    noise.connect(lp).connect(noiseGain).connect(ctx.destination);
+    noise.start(t);
+    noise.stop(t + 0.3);
+  }
+
+  private playBulletTimeExitSound(): void {
+    if (!this.audioCtx) return;
+    const ctx = this.audioCtx;
+    const t = ctx.currentTime;
+
+    // Ascending pitch sweep (reverse whoosh — snapping back to speed)
+    const osc = ctx.createOscillator();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(80, t);
+    osc.frequency.exponentialRampToValueAtTime(500, t + 0.2);
+    const oscGain = ctx.createGain();
+    oscGain.gain.setValueAtTime(0.25, t);
+    oscGain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+    osc.connect(oscGain).connect(ctx.destination);
+    osc.start(t);
+    osc.stop(t + 0.25);
+
+    // Rising filtered noise burst
+    const bufferSize = Math.floor(ctx.sampleRate * 0.2);
+    const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < bufferSize; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.exp(-i / (bufferSize * 0.2));
+    }
+    const noise = ctx.createBufferSource();
+    noise.buffer = buffer;
+    const hp = ctx.createBiquadFilter();
+    hp.type = "highpass";
+    hp.frequency.setValueAtTime(200, t);
+    hp.frequency.exponentialRampToValueAtTime(3000, t + 0.2);
+    const noiseGain = ctx.createGain();
+    noiseGain.gain.setValueAtTime(0.15, t);
+    noiseGain.gain.exponentialRampToValueAtTime(0.001, t + 0.2);
+    noise.connect(hp).connect(noiseGain).connect(ctx.destination);
+    noise.start(t);
+    noise.stop(t + 0.2);
   }
 
   // --- State Emission ---
