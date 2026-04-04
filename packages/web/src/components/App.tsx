@@ -94,7 +94,8 @@ export function App({ store, onSave, initialFileHandle }: AppProps) {
       if (mode === "zombie") {
         setView("zombie");
       } else if (mode === "random") {
-        setView(Math.random() < 0.6 ? "practice" : "paragraph");
+        const r = Math.random();
+        setView(r < 0.5 ? "practice" : r < 0.8 ? "paragraph" : "zombie");
       } else {
         setView(mode === "paragraph" ? "paragraph" : "practice");
       }

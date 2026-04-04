@@ -47,8 +47,8 @@ const MAX_HP = 3;
 const SPAWN_Z = -40;
 const DEATH_Z = 1;
 const BASE_SPEED = 4;
-const BASE_SPAWN_INTERVAL = 3;
-const MIN_SPAWN_INTERVAL = 1.5;
+const BASE_SPAWN_INTERVAL = 1.8;
+const MIN_SPAWN_INTERVAL = 0.8;
 
 export class ZombieGame {
   private renderer: THREE.WebGLRenderer;
@@ -214,15 +214,23 @@ export class ZombieGame {
   private updateSpawning(dt: number): void {
     if (this.gameOver || this.sessionComplete) return;
 
+    const maxOnScreen = Math.min(2 + Math.floor(this.kills / 5), 5);
+    const alive = this.zombies.filter((z) => !z.isDying).length;
+
+    // Instant spawn if no alive zombies on screen
+    if (alive === 0) {
+      this.spawnZombie();
+      this.spawnTimer = 0.3;
+      return;
+    }
+
     this.spawnTimer -= dt;
     if (this.spawnTimer <= 0) {
-      const maxOnScreen = Math.min(2 + Math.floor(this.kills / 5), 5);
-      const alive = this.zombies.filter((z) => !z.isDying).length;
       if (alive < maxOnScreen) {
         this.spawnZombie();
       }
       const interval = Math.max(
-        BASE_SPAWN_INTERVAL - this.kills * 0.1,
+        BASE_SPAWN_INTERVAL - this.kills * 0.08,
         MIN_SPAWN_INTERVAL
       );
       this.spawnTimer = interval;
