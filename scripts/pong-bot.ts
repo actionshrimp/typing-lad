@@ -34,7 +34,7 @@ const BALL_R = 8;
 const BALL_SPEED_INIT = 175;
 const BALL_SPEED_INCREMENT = 8;
 const BALL_SPEED_MAX = 350;
-const WORD_SLOTS = 6;
+const WORD_SLOTS = 12;
 
 // ── Protocol types ────────────────────────────────────────────────
 

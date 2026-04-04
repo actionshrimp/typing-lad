@@ -69,7 +69,6 @@ const CPU_RANDOMNESS = 15; // px offset
 const WIN_SCORE = 3;
 const SERVE_PAUSE = 1.0; // seconds
 const WORD_SLOTS = 12;
-const WORD_SLOTS_MULTI = 6;
 const MAX_BOUNCE_ANGLE = (60 * Math.PI) / 180; // 60 degrees
 const TRAIL_LENGTH = 20;
 const SCORE_BURST_COUNT = 18;
@@ -279,7 +278,7 @@ export class PongGame {
 
   private initWordSlots(): void {
     this.wordSlots = [];
-    const count = this.mode === "multiplayer" ? WORD_SLOTS_MULTI : WORD_SLOTS;
+    const count = WORD_SLOTS;
     const slotSpacing = FIELD_H / (count + 1);
     for (let i = 0; i < count; i++) {
       const yPos = slotSpacing * (i + 1);
