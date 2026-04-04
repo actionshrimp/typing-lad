@@ -56,6 +56,7 @@ export function Summary({ store, sessionResult, paragraphResult, onContinue, onR
   const duration = formatDuration(startedAt, endedAt);
   const mode = sessionResult?.mode ?? "paragraph";
   const isZombie = mode === "zombie";
+  const isPong = mode === "pong";
 
   // Velocity chart data (word mode only)
   const velocityData = sessionResult?.perWordWpm?.map((wpm, i) => ({
@@ -66,12 +67,12 @@ export function Summary({ store, sessionResult, paragraphResult, onContinue, onR
   return (
     <div className="max-w-3xl mx-auto">
       {/* Header */}
-      <div className={`border-l-4 ${isZombie ? "border-correct" : "border-accent"} pl-4 mb-8`}>
-        <div className={`text-[10px] font-semibold tracking-[0.3em] uppercase mb-1 ${isZombie ? "text-correct" : "text-accent"}`}>
-          {isZombie ? "Mission Report" : "Session Complete"}
+      <div className={`border-l-4 ${isPong ? "border-info" : isZombie ? "border-correct" : "border-accent"} pl-4 mb-8`}>
+        <div className={`text-[10px] font-semibold tracking-[0.3em] uppercase mb-1 ${isPong ? "text-info" : isZombie ? "text-correct" : "text-accent"}`}>
+          {isPong ? "Match Result" : isZombie ? "Mission Report" : "Session Complete"}
         </div>
         <h1 className="text-2xl font-bold text-text-primary">
-          {isZombie ? "Zombies Eliminated" : "Session Summary"}
+          {isPong ? "Pong Complete" : isZombie ? "Zombies Eliminated" : "Session Summary"}
         </h1>
         <p className="text-xs text-text-dim mt-1">
           {new Date(endedAt || Date.now()).toLocaleString()}
@@ -81,12 +82,12 @@ export function Summary({ store, sessionResult, paragraphResult, onContinue, onR
       {/* Bento metrics */}
       <div className="grid grid-cols-4 gap-3 mb-8">
         <MetricCard
-          label={isZombie ? "Avg Kill Speed" : "Avg Velocity"}
+          label={isPong ? "Typing Speed" : isZombie ? "Avg Kill Speed" : "Avg Velocity"}
           value={`${avgWpm.toFixed(0)}`}
           unit="WPM"
         />
         <MetricCard
-          label={isZombie ? "Hit Accuracy" : "Precision Rate"}
+          label={isPong ? "Accuracy" : isZombie ? "Hit Accuracy" : "Precision Rate"}
           value={`${(accuracy * 100).toFixed(0)}`}
           unit="%"
           color={accuracy >= 0.95 ? "text-correct" : accuracy >= 0.8 ? "text-yellow-400" : "text-incorrect"}

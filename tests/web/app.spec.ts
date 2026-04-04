@@ -2,6 +2,8 @@ import { test, expect } from "@playwright/test";
 
 test.describe("Web App", () => {
   test.beforeEach(async ({ page }) => {
+    // Force word mode for deterministic Practice button behavior
+    await page.addInitScript(() => { (window as any).__forceMode = "word"; });
     // Clear localStorage before each test
     await page.goto("/");
     await page.evaluate(() => localStorage.clear());

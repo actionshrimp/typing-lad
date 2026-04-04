@@ -22,9 +22,10 @@ import { Paragraph } from "./Paragraph";
 import { Summary } from "./Summary";
 import { Stats } from "./Stats";
 
-type ViewState = "home" | "practice" | "paragraph" | "zombie" | "summary" | "stats" | "save-restore";
+type ViewState = "home" | "practice" | "paragraph" | "zombie" | "pong" | "summary" | "stats" | "save-restore";
 
 const Zombie = React.lazy(() => import("./Zombie").then((m) => ({ default: m.Zombie })));
+const Pong = React.lazy(() => import("./Pong").then((m) => ({ default: m.Pong })));
 
 type SyncStatus = "none" | "synced" | "needs-permission" | "unavailable";
 
@@ -81,21 +82,27 @@ export function App({ store, onSave, initialFileHandle }: AppProps) {
   }, []);
 
   const startPractice = useCallback(
-    (mode: "word" | "paragraph" | "zombie" | "random") => {
+    (mode: "word" | "paragraph" | "zombie" | "pong" | "random") => {
       const newEngine = new Engine(store);
       setEngine(newEngine);
 
-      const forceMode = (window as any).__forceMode;
+      const forceMode = (window as any).__forceMode as string | undefined;
       if (forceMode === "paragraph") {
         setView("paragraph");
+        return;
+      }
+      if (forceMode === "word") {
+        setView("practice");
         return;
       }
 
       if (mode === "zombie") {
         setView("zombie");
+      } else if (mode === "pong") {
+        setView("pong");
       } else if (mode === "random") {
         const r = Math.random();
-        setView(r < 0.5 ? "practice" : r < 0.8 ? "paragraph" : "zombie");
+        setView(r < 0.4 ? "practice" : r < 0.65 ? "paragraph" : r < 0.85 ? "zombie" : "pong");
       } else {
         setView(mode === "paragraph" ? "paragraph" : "practice");
       }
@@ -114,7 +121,7 @@ export function App({ store, onSave, initialFileHandle }: AppProps) {
   );
 
   const handleModeSelect = useCallback(
-    (mode: "word" | "paragraph" | "zombie") => {
+    (mode: "word" | "paragraph" | "zombie" | "pong") => {
       startPractice(mode);
     },
     [startPractice]
@@ -142,6 +149,16 @@ export function App({ store, onSave, initialFileHandle }: AppProps) {
   );
 
   const handleZombieDone = useCallback(
+    (result: SessionResult) => {
+      saveAll();
+      setSessionResult(result);
+      setParagraphResult(undefined);
+      setView("summary");
+    },
+    [saveAll]
+  );
+
+  const handlePongDone = useCallback(
     (result: SessionResult) => {
       saveAll();
       setSessionResult(result);
@@ -210,7 +227,7 @@ export function App({ store, onSave, initialFileHandle }: AppProps) {
   }, []);
 
   const getActiveTab = (): NavTab => {
-    if (view === "practice" || view === "paragraph" || view === "zombie") return "practice";
+    if (view === "practice" || view === "paragraph" || view === "zombie" || view === "pong") return "practice";
     if (view === "stats") return "stats";
     if (view === "save-restore") return "save-restore";
     return "home";
@@ -220,6 +237,7 @@ export function App({ store, onSave, initialFileHandle }: AppProps) {
     if (view === "practice") return "word";
     if (view === "paragraph") return "paragraph";
     if (view === "zombie") return "zombie";
+    if (view === "pong") return "pong";
     return null;
   };
 
@@ -263,6 +281,16 @@ export function App({ store, onSave, initialFileHandle }: AppProps) {
           <Zombie
             engine={engine}
             onDone={handleZombieDone}
+            onEscape={handleEscape}
+          />
+        </Suspense>
+      )}
+
+      {view === "pong" && (
+        <Suspense fallback={<div className="text-text-dim text-sm">Loading Pong Mode...</div>}>
+          <Pong
+            engine={engine}
+            onDone={handlePongDone}
             onEscape={handleEscape}
           />
         </Suspense>

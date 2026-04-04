@@ -37,7 +37,7 @@ export interface SessionResult {
   endedAt: string;
   perWordWpm: number[];
   totalErrors: number;
-  mode: "word" | "paragraph" | "zombie";
+  mode: "word" | "paragraph" | "zombie" | "pong";
 }
 
 export class Engine {
@@ -185,7 +185,7 @@ export class Engine {
     };
   }
 
-  endSession(mode: "word" | "paragraph" | "zombie" = "word"): SessionResult {
+  endSession(mode: "word" | "paragraph" | "zombie" | "pong" = "word"): SessionResult {
     const now = new Date().toISOString();
     const result: SessionResult = {
       wordsPracticed: this._wordsCompleted,
