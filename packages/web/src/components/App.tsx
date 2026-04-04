@@ -16,16 +16,19 @@ import {
   hasFileSystemAccess,
 } from "../persistence";
 import { Layout, type NavTab, type ActiveMode } from "./Layout";
+import type { PongNetLike } from "../pong/net";
 import { Menu } from "./Menu";
 import { Practice } from "./Practice";
 import { Paragraph } from "./Paragraph";
 import { Summary } from "./Summary";
 import { Stats } from "./Stats";
 
-type ViewState = "home" | "practice" | "paragraph" | "zombie" | "pong" | "summary" | "stats" | "save-restore";
+type ViewState = "home" | "practice" | "paragraph" | "zombie" | "pong" | "pong-lobby" | "pong-multi" | "summary" | "stats" | "save-restore";
 
 const Zombie = React.lazy(() => import("./Zombie").then((m) => ({ default: m.Zombie })));
 const Pong = React.lazy(() => import("./Pong").then((m) => ({ default: m.Pong })));
+const PongLobby = React.lazy(() => import("./PongLobby").then((m) => ({ default: m.PongLobby })));
+const MultiplayerPong = React.lazy(() => import("./MultiplayerPong").then((m) => ({ default: m.MultiplayerPong })));
 
 type SyncStatus = "none" | "synced" | "needs-permission" | "unavailable";
 
@@ -41,6 +44,8 @@ export function App({ store, onSave, initialFileHandle }: AppProps) {
   const [sessionResult, setSessionResult] = useState<SessionResult | undefined>();
   const [paragraphResult, setParagraphResult] = useState<ParagraphResult | undefined>();
   const [fileHandle, setFileHandle] = useState<FileSystemFileHandle | null>(initialFileHandle);
+  const [multiNet, setMultiNet] = useState<PongNetLike | null>(null);
+  const [isPlayer1, setIsPlayer1] = useState(true);
 
   const viewRef = useRef(view);
   viewRef.current = view;
@@ -121,7 +126,11 @@ export function App({ store, onSave, initialFileHandle }: AppProps) {
   );
 
   const handleModeSelect = useCallback(
-    (mode: "word" | "paragraph" | "zombie" | "pong") => {
+    (mode: "word" | "paragraph" | "zombie" | "pong" | "pong-multi") => {
+      if (mode === "pong-multi") {
+        setView("pong-lobby");
+        return;
+      }
       startPractice(mode);
     },
     [startPractice]
@@ -161,6 +170,28 @@ export function App({ store, onSave, initialFileHandle }: AppProps) {
   const handlePongDone = useCallback(
     (result: SessionResult) => {
       saveAll();
+      setSessionResult(result);
+      setParagraphResult(undefined);
+      setView("summary");
+    },
+    [saveAll]
+  );
+
+  const handleMultiplayerReady = useCallback(
+    (opts: { net: PongNetLike; isPlayer1: boolean }) => {
+      const newEngine = new Engine(store);
+      setEngine(newEngine);
+      setMultiNet(opts.net);
+      setIsPlayer1(opts.isPlayer1);
+      setView("pong-multi");
+    },
+    [store]
+  );
+
+  const handleMultiDone = useCallback(
+    (result: SessionResult) => {
+      saveAll();
+      setMultiNet(null);
       setSessionResult(result);
       setParagraphResult(undefined);
       setView("summary");
@@ -227,7 +258,7 @@ export function App({ store, onSave, initialFileHandle }: AppProps) {
   }, []);
 
   const getActiveTab = (): NavTab => {
-    if (view === "practice" || view === "paragraph" || view === "zombie" || view === "pong") return "practice";
+    if (view === "practice" || view === "paragraph" || view === "zombie" || view === "pong" || view === "pong-lobby" || view === "pong-multi") return "practice";
     if (view === "stats") return "stats";
     if (view === "save-restore") return "save-restore";
     return "home";
@@ -237,7 +268,7 @@ export function App({ store, onSave, initialFileHandle }: AppProps) {
     if (view === "practice") return "word";
     if (view === "paragraph") return "paragraph";
     if (view === "zombie") return "zombie";
-    if (view === "pong") return "pong";
+    if (view === "pong" || view === "pong-lobby" || view === "pong-multi") return "pong";
     return null;
   };
 
@@ -291,6 +322,27 @@ export function App({ store, onSave, initialFileHandle }: AppProps) {
           <Pong
             engine={engine}
             onDone={handlePongDone}
+            onEscape={handleEscape}
+          />
+        </Suspense>
+      )}
+
+      {view === "pong-lobby" && (
+        <Suspense fallback={<div className="text-text-dim text-sm">Loading Multiplayer...</div>}>
+          <PongLobby
+            onReady={handleMultiplayerReady}
+            onCancel={handleEscape}
+          />
+        </Suspense>
+      )}
+
+      {view === "pong-multi" && multiNet && (
+        <Suspense fallback={<div className="text-text-dim text-sm">Loading Multiplayer Pong...</div>}>
+          <MultiplayerPong
+            engine={engine}
+            isPlayer1={isPlayer1}
+            net={multiNet}
+            onDone={handleMultiDone}
             onEscape={handleEscape}
           />
         </Suspense>

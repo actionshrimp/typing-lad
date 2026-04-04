@@ -11,14 +11,18 @@
     "dev:tui": "tsx packages/tui/src/main.tsx",
     "dev:web": "npm run dev --workspace=packages/web",
     "test:tui": "vitest run --config tests/tui/vitest.config.ts",
-    "test:web": "playwright test --config tests/web/playwright.config.ts"
+    "test:web": "playwright test --config tests/web/playwright.config.ts",
+    "pong-bot": "tsx scripts/pong-bot.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.52.0",
+    "@types/ws": "^8.18.1",
+    "node-datachannel": "^0.32.1",
     "node-pty": "^1.0.0",
     "strip-ansi": "^7.1.0",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",
-    "vitest": "^3.1.0"
+    "vitest": "^3.1.0",
+    "ws": "^8.20.0"
   }
 }

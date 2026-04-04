@@ -11,6 +11,7 @@
   "dependencies": {
     "@tailwindcss/vite": "^4.2.2",
     "@typing-lad/core": "*",
+    "peerjs": "^1.5.5",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
     "recharts": "^3.8.1",

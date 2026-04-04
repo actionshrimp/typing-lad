@@ -9,7 +9,7 @@ interface LayoutProps {
   activeTab: NavTab;
   activeMode: ActiveMode;
   onNavigate: (tab: NavTab) => void;
-  onModeSelect: (mode: "word" | "paragraph" | "zombie" | "pong") => void;
+  onModeSelect: (mode: "word" | "paragraph" | "zombie" | "pong" | "pong-multi") => void;
   syncStatus: SyncStatus;
   onEnableSync: () => void;
   onDisableSync: () => void;
@@ -118,7 +118,7 @@ export function Layout({ activeTab, activeMode, onNavigate, onModeSelect, syncSt
           </button>
           <button
             onClick={() => onModeSelect("pong")}
-            className={`flex items-center gap-2 px-3 py-2 text-sm rounded-l transition-colors text-left ${
+            className={`flex items-center gap-2 px-3 py-2 text-sm rounded-l transition-colors mb-1 text-left ${
               activeMode === "pong"
                 ? "text-info bg-info/10 border-r-2 border-info"
                 : "text-text-secondary hover:text-text-primary hover:bg-white/5"
@@ -126,6 +126,17 @@ export function Layout({ activeTab, activeMode, onNavigate, onModeSelect, syncSt
           >
             <span className="material-symbols-outlined text-base">sports_tennis</span>
             Pong Mode
+          </button>
+          <button
+            onClick={() => onModeSelect("pong-multi")}
+            className={`flex items-center gap-2 px-3 py-2 text-sm rounded-l transition-colors text-left ${
+              activeMode === "pong"
+                ? "text-info/60 hover:text-info hover:bg-info/5"
+                : "text-text-secondary hover:text-text-primary hover:bg-white/5"
+            }`}
+          >
+            <span className="material-symbols-outlined text-base">group</span>
+            Multiplayer
           </button>
         </aside>
 

@@ -33,7 +33,7 @@ export function Pong({ engine, onDone, onEscape }: PongProps) {
       onWordCompleted: (word, typed, durationMs) => {
         engine.submitAttempt(word, typed, durationMs);
       },
-    });
+    }, { mode: "solo" });
     gameRef.current = game;
 
     const { width, height } = container.getBoundingClientRect();

@@ -1,4 +1,10 @@
 import * as THREE from "three";
+import type { PeerMessage, HitMsg, ServeMsg } from "./protocol";
+
+// --- Types ---
+
+export type PongMode = "solo" | "multiplayer";
+export type PongSide = "left" | "right";
 
 // --- Interfaces ---
 
@@ -6,16 +12,28 @@ export interface PongGameCallbacks {
   onStateChange: (state: PongGameState) => void;
   onRequestWord: (activeWords: ReadonlySet<string>) => string;
   onWordCompleted: (word: string, typed: string, durationMs: number) => void;
+  // Multiplayer callbacks (optional — not used in solo)
+  onPaddleHit?: (msg: HitMsg) => void;
+  onServe?: (msg: ServeMsg) => void;
+  onTypingChange?: (targetIds: number[], prefix: string) => void;
+  onWordDone?: (slotIndex: number, newWord: string, paddleTargetY: number, word: string, typed: string, durationMs: number) => void;
 }
 
 export interface PongGameState {
-  playerScore: number;
-  cpuScore: number;
+  playerScore: number; // left player score
+  cpuScore: number; // right player score (cpu in solo, P2 in multi)
   words: Array<{
     id: number;
     word: string;
     typed: string;
     yPosition: number; // normalized 0-1 within field
+    isTargeted: boolean;
+  }>;
+  opponentWords: Array<{
+    id: number;
+    word: string;
+    typed: string;
+    yPosition: number;
     isTargeted: boolean;
   }>;
   playerPaddleY: number; // normalized 0-1
@@ -25,6 +43,13 @@ export interface PongGameState {
   gameOver: boolean;
   playerWon: boolean;
   sessionComplete: boolean;
+  side: PongSide;
+  mode: PongMode;
+}
+
+export interface PongGameConfig {
+  mode?: PongMode;
+  side?: PongSide;
 }
 
 // --- Constants ---
@@ -44,6 +69,7 @@ const CPU_RANDOMNESS = 15; // px offset
 const WIN_SCORE = 3;
 const SERVE_PAUSE = 1.0; // seconds
 const WORD_SLOTS = 12;
+const WORD_SLOTS_MULTI = 6;
 const MAX_BOUNCE_ANGLE = (60 * Math.PI) / 180; // 60 degrees
 const TRAIL_LENGTH = 20;
 const SCORE_BURST_COUNT = 18;
@@ -77,9 +103,13 @@ export class PongGame {
   private clock: THREE.Clock;
   private callbacks: PongGameCallbacks;
 
+  // Mode
+  private mode: PongMode;
+  private side: PongSide;
+
   // Game objects
-  private playerPaddle!: THREE.Mesh;
-  private cpuPaddle!: THREE.Mesh;
+  private playerPaddle!: THREE.Mesh; // left paddle
+  private cpuPaddle!: THREE.Mesh; // right paddle
   private ball!: THREE.Mesh;
   private ballGlow!: THREE.Mesh;
   private trailPoints: THREE.Mesh[] = [];
@@ -87,11 +117,12 @@ export class PongGame {
   private centerLine!: THREE.LineSegments;
 
   // State
-  private playerScore = 0;
-  private cpuScore = 0;
-  private playerY = FIELD_H / 2; // center of paddle
-  private playerTargetY = FIELD_H / 2;
-  private cpuY = FIELD_H / 2;
+  private playerScore = 0; // left player score
+  private cpuScore = 0; // right player score
+  private playerY = FIELD_H / 2; // left paddle center
+  private playerTargetY = FIELD_H / 2; // left paddle target
+  private cpuY = FIELD_H / 2; // right paddle center
+  private rightPaddleTargetY = FIELD_H / 2; // right paddle target (multiplayer)
   private ballX = FIELD_W / 2;
   private ballY = FIELD_H / 2;
   private ballVx = 0;
@@ -100,12 +131,16 @@ export class PongGame {
   private rallyHits = 0;
   private servePause = 0;
   private serving = true;
-  private serveToPlayer = false;
+  private serveToPlayer = false; // true = ball goes left
   private gameOver = false;
   private playerWon = false;
+  private waitingForRemoteServe = false;
+  private pendingRemoteHit: HitMsg | null = null; // deferred until ball reaches paddle
+  private incomingMessages: PeerMessage[] = []; // ordered queue of unprocessed messages
 
   // Words
-  private wordSlots: WordSlot[] = [];
+  private wordSlots: WordSlot[] = []; // my words
+  private opponentWordSlots: WordSlot[] = []; // opponent's words (multiplayer)
   private nextWordId = 0;
   private targetIds: number[] = [];
   private typedPrefix = "";
@@ -132,12 +167,14 @@ export class PongGame {
   // Scoring flash
   private scoreFlashTimer = 0;
 
-  // CPU AI offset for randomness
+  // CPU AI offset for randomness (solo only)
   private cpuTargetOffset = 0;
   private cpuOffsetTimer = 0;
 
-  constructor(canvas: HTMLCanvasElement, callbacks: PongGameCallbacks) {
+  constructor(canvas: HTMLCanvasElement, callbacks: PongGameCallbacks, config?: PongGameConfig) {
     this.callbacks = callbacks;
+    this.mode = config?.mode ?? "solo";
+    this.side = config?.side ?? "left";
     this.clock = new THREE.Clock(false);
 
     // Renderer
@@ -195,6 +232,12 @@ export class PongGame {
     this.cpuPaddle.position.set(FIELD_W - PADDLE_MARGIN, FIELD_H / 2, 0);
     this.scene.add(this.cpuPaddle);
 
+    // In multiplayer, color my paddle orange and opponent's red
+    if (this.mode === "multiplayer" && this.side === "right") {
+      (this.playerPaddle.material as THREE.MeshBasicMaterial).color.setHex(0xff4672);
+      (this.cpuPaddle.material as THREE.MeshBasicMaterial).color.setHex(0xfe9d00);
+    }
+
     // Ball glow (additive-blended, behind ball)
     const glowGeo = new THREE.CircleGeometry(BALL_R * 3, 24);
     const glowMat = new THREE.MeshBasicMaterial({
@@ -236,8 +279,9 @@ export class PongGame {
 
   private initWordSlots(): void {
     this.wordSlots = [];
-    const slotSpacing = FIELD_H / (WORD_SLOTS + 1);
-    for (let i = 0; i < WORD_SLOTS; i++) {
+    const count = this.mode === "multiplayer" ? WORD_SLOTS_MULTI : WORD_SLOTS;
+    const slotSpacing = FIELD_H / (count + 1);
+    for (let i = 0; i < count; i++) {
       const yPos = slotSpacing * (i + 1);
       const word = this.requestWord();
       this.wordSlots.push({
@@ -255,12 +299,20 @@ export class PongGame {
     return this.callbacks.onRequestWord(active);
   }
 
+  private get myWordParticleX(): number {
+    if (this.mode === "solo") return 80;
+    return this.side === "left" ? 80 : FIELD_W - 80;
+  }
+
   // --- Public API ---
 
   start(): void {
     this.running = true;
     this.clock.start();
-    this.resetBall(true);
+    if (this.mode === "solo") {
+      this.resetBall(true);
+    }
+    // In multiplayer, wait for serve coordination
     this.emitState();
     this.tick();
   }
@@ -317,6 +369,11 @@ export class PongGame {
     };
   }
 
+  /** Get my initial words for the hello message. */
+  getMyWords(): { word: string; yPosition: number }[] {
+    return this.wordSlots.map((s) => ({ word: s.word, yPosition: s.yPos }));
+  }
+
   handleKeyPress(key: string): void {
     if (this.gameOver) return;
 
@@ -356,18 +413,14 @@ export class PongGame {
         if (slot) slot.typed = this.typedPrefix;
       }
 
+      // Fire typing change callback
+      this.callbacks.onTypingChange?.(this.targetIds, this.typedPrefix);
+
       // Check for completion (only possible when one candidate left)
       if (this.targetIds.length === 1) {
         const slot = this.wordSlots.find((s) => s.id === this.targetIds[0]);
         if (slot && this.typedPrefix.length === slot.word.length) {
-          const duration = performance.now() - this.targetStartedAt;
-          this.callbacks.onWordCompleted(slot.word, slot.typed, duration);
-          this.playerTargetY = slot.yPos;
-          this.spawnWordParticles(80, slot.yPos);
-          this.playScoreTone();
-          this.replaceWordSlot(slot);
-          this.targetIds = [];
-          this.typedPrefix = "";
+          this.completeWord(slot);
         }
       }
       return;
@@ -386,20 +439,204 @@ export class PongGame {
       slot.isTargeted = true;
     }
 
+    // Fire typing change callback
+    this.callbacks.onTypingChange?.(this.targetIds, this.typedPrefix);
+
     // Check for single-char word completion (only if exactly one match)
     if (this.targetIds.length === 1) {
       const slot = matches[0];
       if (slot.word.length === 1) {
-        const duration = performance.now() - this.targetStartedAt;
-        this.callbacks.onWordCompleted(slot.word, slot.typed, duration);
-        this.playerTargetY = slot.yPos;
-        this.spawnWordParticles(80, slot.yPos);
-        this.playScoreTone();
-        this.replaceWordSlot(slot);
-        this.targetIds = [];
-        this.typedPrefix = "";
+        this.completeWord(slot);
       }
     }
+  }
+
+  private completeWord(slot: WordSlot): void {
+    const duration = performance.now() - this.targetStartedAt;
+    this.callbacks.onWordCompleted(slot.word, slot.typed, duration);
+
+    // Set my paddle target
+    if (this.side !== "right") {
+      this.playerTargetY = slot.yPos;
+    } else {
+      this.rightPaddleTargetY = slot.yPos;
+    }
+
+    this.spawnWordParticles(this.myWordParticleX, slot.yPos);
+    this.playScoreTone();
+
+    const slotIndex = this.wordSlots.indexOf(slot);
+    this.replaceWordSlot(slot);
+    const newWord = this.wordSlots[slotIndex]?.word ?? "";
+    const paddleTargetY = slot.yPos;
+
+    // Fire word done callback for network
+    this.callbacks.onWordDone?.(slotIndex, newWord, paddleTargetY, slot.word, slot.typed, duration);
+
+    this.targetIds = [];
+    this.typedPrefix = "";
+  }
+
+  // --- Multiplayer Public Methods ---
+
+  /** Populate opponent's word column from hello message. */
+  setOpponentWords(words: { word: string; yPosition: number }[]): void {
+    this.opponentWordSlots = words.map((w, i) => ({
+      id: 10000 + i, // offset IDs to avoid collision with local IDs
+      word: w.word,
+      typed: "",
+      yPos: w.yPosition,
+      isTargeted: false,
+    }));
+  }
+
+  /** Set opponent paddle target from word_done message. */
+  setOpponentPaddleTarget(y: number): void {
+    if (this.side === "left") {
+      this.rightPaddleTargetY = y;
+    } else {
+      this.playerTargetY = y;
+    }
+  }
+
+  /** Update opponent's typing state from typing message. */
+  updateOpponentTyping(targetIds: number[], prefix: string): void {
+    // Reset all opponent words first
+    for (const slot of this.opponentWordSlots) {
+      slot.typed = "";
+      slot.isTargeted = false;
+    }
+    // Apply opponent's current typing
+    for (const id of targetIds) {
+      // Map remote IDs: opponent's word slots use their local IDs,
+      // but we stored them with offset IDs. Match by position in array.
+      // The targetIds from the remote are their local IDs.
+      // We need to find the matching slot — the remote sends their slot IDs.
+      // Since we don't know the remote's ID scheme, match by checking each slot.
+      const slot = this.opponentWordSlots.find((s) => {
+        // The remote targetIds are from their wordSlots which start at 0.
+        // We assigned our opponentWordSlots IDs starting at 10000.
+        // Map: remote ID i → our ID 10000 + index. But remote IDs aren't sequential if words were replaced.
+        // Simplest: match by word content against prefix.
+        return s.word.startsWith(prefix) && !s.isTargeted;
+      });
+      if (slot) {
+        slot.typed = prefix;
+        slot.isTargeted = true;
+      }
+    }
+  }
+
+  /** Replace a word in the opponent's column from word_done message. */
+  replaceOpponentWord(slotIndex: number, newWord: string): void {
+    if (slotIndex >= 0 && slotIndex < this.opponentWordSlots.length) {
+      const old = this.opponentWordSlots[slotIndex];
+      this.opponentWordSlots[slotIndex] = {
+        id: this.nextWordId++,
+        word: newWord,
+        typed: "",
+        yPos: old.yPos,
+        isTargeted: false,
+      };
+    }
+  }
+
+  /** Queue an incoming network message for ordered processing during tick. */
+  receiveMessage(msg: PeerMessage): void {
+    this.incomingMessages.push(msg);
+  }
+
+  /** Process queued messages at the start of each tick.
+   *  Immediate messages (hello, typing, word_done) are always applied.
+   *  Hit → stored as pendingRemoteHit, applied in updateBall when ball reaches paddle.
+   *  Serve → applied when waitingForRemoteServe, otherwise re-queued. */
+  private drainMessages(): void {
+    const deferred: PeerMessage[] = [];
+    for (const msg of this.incomingMessages) {
+      switch (msg.type) {
+        case "hello":
+          this.setOpponentWords((msg as any).words);
+          this.startMultiplayerServe(false);
+          break;
+        case "typing":
+          this.updateOpponentTyping((msg as any).targetIds, (msg as any).typedPrefix);
+          break;
+        case "word_done":
+          this.replaceOpponentWord((msg as any).slotIndex, (msg as any).newWord);
+          this.setOpponentPaddleTarget((msg as any).paddleTargetY);
+          break;
+        case "hit":
+          // Only accept hits during active play — discard stale hits from previous rally
+          if (!this.serving && !this.waitingForRemoteServe) {
+            this.pendingRemoteHit = msg as HitMsg;
+          }
+          break;
+        case "serve": {
+          // Host is authoritative — sync scores from serve message
+          const serve = msg as ServeMsg;
+          const prevLeft = this.playerScore;
+          const prevRight = this.cpuScore;
+          this.playerScore = serve.leftScore;
+          this.cpuScore = serve.rightScore;
+          const scored = this.playerScore !== prevLeft || this.cpuScore !== prevRight;
+          if (scored) {
+            this.scoreFlashTimer = 0.4;
+            // Particles on the side that was scored against
+            const leftScored = this.playerScore > prevLeft;
+            const particleX = leftScored ? FIELD_W - 100 : 100;
+            const particleColor = leftScored ? 0xfe9d00 : 0xff4672;
+            this.spawnScoreParticles(particleX, FIELD_H / 2, particleColor);
+            this.playScoreToneGoal();
+          }
+          // Check game over
+          if (this.playerScore >= WIN_SCORE) {
+            this.gameOver = true;
+            this.playerWon = true;
+          } else if (this.cpuScore >= WIN_SCORE) {
+            this.gameOver = true;
+            this.playerWon = false;
+          }
+          // Reset ball and apply serve velocity
+          this.ballX = FIELD_W / 2;
+          this.ballY = FIELD_H / 2;
+          this.ballVx = serve.ballVx;
+          this.ballVy = serve.ballVy;
+          this.ballSpeed = BALL_SPEED_INIT;
+          this.rallyHits = 0;
+          this.serving = false;
+          this.waitingForRemoteServe = false;
+          this.pendingRemoteHit = null;
+          this.ball.position.set(this.ballX, this.ballY, 0);
+          this.ballGlow.position.set(this.ballX, this.ballY, -1);
+          break;
+        }
+      }
+    }
+    this.incomingMessages = deferred;
+  }
+
+  /** Apply a deferred remote hit (called from updateBall when ball reaches paddle zone). */
+  private applyPendingHit(): void {
+    const msg = this.pendingRemoteHit!;
+    this.pendingRemoteHit = null;
+    this.ballX = msg.ballX;
+    this.ballY = msg.ballY;
+    this.ballVx = msg.ballVx;
+    this.ballVy = msg.ballVy;
+    this.rallyHits = msg.rallyHits;
+    this.ballSpeed = Math.min(
+      BALL_SPEED_INIT + this.rallyHits * BALL_SPEED_INCREMENT,
+      BALL_SPEED_MAX
+    );
+    this.playPaddleHit();
+    this.spawnBounceParticles(this.ballX, this.ballY);
+    this.ball.position.set(this.ballX, this.ballY, 0);
+    this.ballGlow.position.set(this.ballX, this.ballY, -1);
+  }
+
+  /** Initiate serve in multiplayer (called when both are ready to start). */
+  startMultiplayerServe(toLeft: boolean): void {
+    this.resetBall(toLeft);
   }
 
   // --- Animation Loop ---
@@ -408,11 +645,23 @@ export class PongGame {
     if (!this.running) return;
     this.rafId = requestAnimationFrame(this.tick);
 
+    // Process network messages before physics
+    if (this.mode === "multiplayer") {
+      this.drainMessages();
+    }
+
     const realDt = Math.min(this.clock.getDelta(), 0.05); // cap dt
 
-    // Determine target time scale: slow when ball in player half heading toward player
-    const isSlow = !this.serving && !this.gameOver &&
-      this.ballX < FIELD_W / 2 && this.ballVx < 0;
+    // Determine target time scale
+    // In multiplayer, only slow when ball approaches YOUR paddle (remote hits arrive at real speed)
+    // In solo, slow for both paddles
+    const approachingLeft = this.ballX < FIELD_W / 2 && this.ballVx < 0;
+    const approachingRight = this.ballX > FIELD_W / 2 && this.ballVx > 0;
+    const isSlow = !this.serving && !this.gameOver && (
+      this.mode === "solo"
+        ? (approachingLeft || approachingRight)
+        : this.side === "left" ? approachingLeft : approachingRight
+    );
     this.targetTimeScale = isSlow ? this.SLOW_SCALE : this.FAST_SCALE;
 
     // Trigger bullet-time sounds on transitions
@@ -436,7 +685,11 @@ export class PongGame {
     this.updateServe(dt);
     this.updateBall(dt);
     this.updatePlayerPaddle(dt);
-    this.updateCpuPaddle(dt);
+    if (this.mode === "solo") {
+      this.updateCpuPaddle(dt);
+    } else {
+      this.updateRightPaddle(dt);
+    }
     this.updateParticles(dt);
     this.updateTrail();
     this.updateScoreFlash(dt);
@@ -457,10 +710,22 @@ export class PongGame {
     this.serving = true;
     this.servePause = SERVE_PAUSE;
     this.serveToPlayer = toPlayer;
+    this.waitingForRemoteServe = false;
+    this.pendingRemoteHit = null;
+    // Move ball mesh to center immediately (updateBall won't run during serve pause)
+    this.ball.position.set(this.ballX, this.ballY, 0);
+    this.ballGlow.position.set(this.ballX, this.ballY, -1);
+
+    // In multiplayer, host (left) always serves; client (right) always waits
+    if (this.mode === "multiplayer" && this.side !== "left") {
+      this.waitingForRemoteServe = true;
+    }
   }
 
   private updateServe(dt: number): void {
     if (!this.serving) return;
+    if (this.waitingForRemoteServe) return; // wait for applyRemoteServe
+
     this.servePause -= dt;
     if (this.servePause <= 0) {
       this.serving = false;
@@ -468,11 +733,25 @@ export class PongGame {
       const dir = this.serveToPlayer ? -1 : 1;
       this.ballVx = Math.cos(angle) * this.ballSpeed * dir;
       this.ballVy = Math.sin(angle) * this.ballSpeed;
+
+      // Fire serve callback in multiplayer (include authoritative scores)
+      this.callbacks.onServe?.({
+        type: "serve",
+        ballVx: this.ballVx,
+        ballVy: this.ballVy,
+        leftScore: this.playerScore,
+        rightScore: this.cpuScore,
+      });
     }
   }
 
   private updateBall(dt: number): void {
     if (this.serving || this.gameOver) return;
+
+    // Host (left) checks BOTH paddles; client (right) skips both and uses deferred hits
+    const isMultiClient = this.mode === "multiplayer" && this.side !== "left";
+    const skipLeftPaddle = isMultiClient;
+    const skipRightPaddle = isMultiClient;
 
     // Swept collision step
     let remaining = dt;
@@ -505,64 +784,103 @@ export class PongGame {
       }
 
       // Player paddle collision (left)
-      const playerLeft = PADDLE_MARGIN - PADDLE_W / 2;
-      const playerRight = PADDLE_MARGIN + PADDLE_W / 2;
-      if (
-        nx - BALL_R < playerRight &&
-        this.ballX - BALL_R >= playerRight &&
-        this.ballVx < 0
-      ) {
-        const paddleTop = this.playerY - PADDLE_H / 2;
-        const paddleBot = this.playerY + PADDLE_H / 2;
-        // Predict ball y at crossing point
-        const t = (this.ballX - BALL_R - playerRight) / -this.ballVx;
-        const crossY = this.ballY + this.ballVy * t;
-        if (crossY + BALL_R >= paddleTop && crossY - BALL_R <= paddleBot) {
-          this.ballX = playerRight + BALL_R;
-          this.ballY = crossY;
-          this.rallyHits++;
-          this.ballSpeed = Math.min(
-            BALL_SPEED_INIT + this.rallyHits * BALL_SPEED_INCREMENT,
-            BALL_SPEED_MAX
-          );
-          const offset = (crossY - this.playerY) / (PADDLE_H / 2);
-          const angle = offset * MAX_BOUNCE_ANGLE;
-          this.ballVx = Math.cos(angle) * this.ballSpeed;
-          this.ballVy = Math.sin(angle) * this.ballSpeed;
-          remaining -= t;
-          this.playPaddleHit();
-          this.spawnBounceParticles(this.ballX, this.ballY);
+      if (!skipLeftPaddle) {
+        const playerRight = PADDLE_MARGIN + PADDLE_W / 2;
+        if (
+          nx - BALL_R < playerRight &&
+          this.ballX - BALL_R >= playerRight &&
+          this.ballVx < 0
+        ) {
+          const paddleTop = this.playerY - PADDLE_H / 2;
+          const paddleBot = this.playerY + PADDLE_H / 2;
+          const t = (this.ballX - BALL_R - playerRight) / -this.ballVx;
+          const crossY = this.ballY + this.ballVy * t;
+          if (crossY + BALL_R >= paddleTop && crossY - BALL_R <= paddleBot) {
+            this.ballX = playerRight + BALL_R;
+            this.ballY = crossY;
+            this.rallyHits++;
+            this.ballSpeed = Math.min(
+              BALL_SPEED_INIT + this.rallyHits * BALL_SPEED_INCREMENT,
+              BALL_SPEED_MAX
+            );
+            const offset = (crossY - this.playerY) / (PADDLE_H / 2);
+            const angle = offset * MAX_BOUNCE_ANGLE;
+            this.ballVx = Math.cos(angle) * this.ballSpeed;
+            this.ballVy = Math.sin(angle) * this.ballSpeed;
+            remaining -= t;
+            this.playPaddleHit();
+            this.spawnBounceParticles(this.ballX, this.ballY);
+            // Fire paddle hit callback in multiplayer
+            if (this.mode === "multiplayer") {
+              this.callbacks.onPaddleHit?.({
+                type: "hit",
+                ballVx: this.ballVx,
+                ballVy: this.ballVy,
+                ballX: this.ballX,
+                ballY: this.ballY,
+                rallyHits: this.rallyHits,
+              });
+            }
+            continue;
+          }
+        }
+      } else if (this.pendingRemoteHit && this.ballVx < 0) {
+        // Opponent's paddle (left) — apply deferred hit when ball reaches paddle zone
+        const playerRight = PADDLE_MARGIN + PADDLE_W / 2;
+        if (nx - BALL_R <= playerRight) {
+          this.applyPendingHit();
+          remaining = 0;
           continue;
         }
       }
 
-      // CPU paddle collision (right)
-      const cpuLeft = FIELD_W - PADDLE_MARGIN - PADDLE_W / 2;
-      const cpuRight = FIELD_W - PADDLE_MARGIN + PADDLE_W / 2;
-      if (
-        nx + BALL_R > cpuLeft &&
-        this.ballX + BALL_R <= cpuLeft &&
-        this.ballVx > 0
-      ) {
-        const paddleTop = this.cpuY - PADDLE_H / 2;
-        const paddleBot = this.cpuY + PADDLE_H / 2;
-        const t = (cpuLeft - this.ballX - BALL_R) / this.ballVx;
-        const crossY = this.ballY + this.ballVy * t;
-        if (crossY + BALL_R >= paddleTop && crossY - BALL_R <= paddleBot) {
-          this.ballX = cpuLeft - BALL_R;
-          this.ballY = crossY;
-          this.rallyHits++;
-          this.ballSpeed = Math.min(
-            BALL_SPEED_INIT + this.rallyHits * BALL_SPEED_INCREMENT,
-            BALL_SPEED_MAX
-          );
-          const offset = (crossY - this.cpuY) / (PADDLE_H / 2);
-          const angle = offset * MAX_BOUNCE_ANGLE;
-          this.ballVx = -Math.cos(angle) * this.ballSpeed;
-          this.ballVy = Math.sin(angle) * this.ballSpeed;
-          remaining -= t;
-          this.playPaddleHit();
-          this.spawnBounceParticles(this.ballX, this.ballY);
+      // CPU/Right paddle collision (right)
+      if (!skipRightPaddle) {
+        const cpuLeft = FIELD_W - PADDLE_MARGIN - PADDLE_W / 2;
+        if (
+          nx + BALL_R > cpuLeft &&
+          this.ballX + BALL_R <= cpuLeft &&
+          this.ballVx > 0
+        ) {
+          const paddleTop = this.cpuY - PADDLE_H / 2;
+          const paddleBot = this.cpuY + PADDLE_H / 2;
+          const t = (cpuLeft - this.ballX - BALL_R) / this.ballVx;
+          const crossY = this.ballY + this.ballVy * t;
+          if (crossY + BALL_R >= paddleTop && crossY - BALL_R <= paddleBot) {
+            this.ballX = cpuLeft - BALL_R;
+            this.ballY = crossY;
+            this.rallyHits++;
+            this.ballSpeed = Math.min(
+              BALL_SPEED_INIT + this.rallyHits * BALL_SPEED_INCREMENT,
+              BALL_SPEED_MAX
+            );
+            const offset = (crossY - this.cpuY) / (PADDLE_H / 2);
+            const angle = offset * MAX_BOUNCE_ANGLE;
+            this.ballVx = -Math.cos(angle) * this.ballSpeed;
+            this.ballVy = Math.sin(angle) * this.ballSpeed;
+            remaining -= t;
+            this.playPaddleHit();
+            this.spawnBounceParticles(this.ballX, this.ballY);
+            // Fire paddle hit callback in multiplayer
+            if (this.mode === "multiplayer") {
+              this.callbacks.onPaddleHit?.({
+                type: "hit",
+                ballVx: this.ballVx,
+                ballVy: this.ballVy,
+                ballX: this.ballX,
+                ballY: this.ballY,
+                rallyHits: this.rallyHits,
+              });
+            }
+            continue;
+          }
+        }
+      } else if (this.pendingRemoteHit && this.ballVx > 0) {
+        // Opponent's paddle (right) — apply deferred hit when ball reaches paddle zone
+        const cpuLeft = FIELD_W - PADDLE_MARGIN - PADDLE_W / 2;
+        if (nx + BALL_R >= cpuLeft) {
+          this.applyPendingHit();
+          remaining = 0;
           continue;
         }
       }
@@ -574,30 +892,48 @@ export class PongGame {
     }
 
     // Score detection
+    // In multiplayer, only the HOST (left) detects scores on both sides.
+    // The client receives authoritative scores via serve messages.
+    const canDetectScore = this.mode !== "multiplayer" || this.side === "left";
     if (this.ballX < 0) {
-      // CPU scores
-      this.cpuScore++;
-      this.scoreFlashTimer = 0.4;
-      this.spawnScoreParticles(100, FIELD_H / 2, 0xff4672);
-      this.playScoreToneGoal();
-      if (this.cpuScore >= WIN_SCORE) {
-        this.gameOver = true;
-        this.playerWon = false;
-      } else {
-        this.resetBall(false); // serve toward CPU
+      if (canDetectScore) {
+        // Ball past left paddle — right player scores
+        this.cpuScore++;
+        this.scoreFlashTimer = 0.4;
+        this.spawnScoreParticles(100, FIELD_H / 2, 0xff4672);
+        this.playScoreToneGoal();
+        if (this.cpuScore >= WIN_SCORE) {
+          this.gameOver = true;
+          this.playerWon = false;
+        } else {
+          this.resetBall(false); // left was scored against, left serves
+        }
       }
     } else if (this.ballX > FIELD_W) {
-      // Player scores
-      this.playerScore++;
-      this.scoreFlashTimer = 0.4;
-      this.spawnScoreParticles(FIELD_W - 100, FIELD_H / 2, 0xfe9d00);
-      this.playScoreToneGoal();
-      if (this.playerScore >= WIN_SCORE) {
-        this.gameOver = true;
-        this.playerWon = true;
-      } else {
-        this.resetBall(true); // serve toward player
+      if (canDetectScore) {
+        // Ball past right paddle — left player scores
+        this.playerScore++;
+        this.scoreFlashTimer = 0.4;
+        this.spawnScoreParticles(FIELD_W - 100, FIELD_H / 2, 0xfe9d00);
+        this.playScoreToneGoal();
+        if (this.playerScore >= WIN_SCORE) {
+          this.gameOver = true;
+          this.playerWon = true;
+        } else {
+          this.resetBall(true); // right was scored against, right serves
+        }
       }
+    }
+
+    // Client: ball escaped field → freeze and wait for host's serve
+    if (isMultiClient && (this.ballX < -BALL_R * 2 || this.ballX > FIELD_W + BALL_R * 2)) {
+      this.ballX = FIELD_W / 2;
+      this.ballY = FIELD_H / 2;
+      this.ballVx = 0;
+      this.ballVy = 0;
+      this.serving = true;
+      this.waitingForRemoteServe = true;
+      this.pendingRemoteHit = null;
     }
 
     // Update ball mesh position
@@ -640,6 +976,19 @@ export class PongGame {
     const maxMove = CPU_SPEED * dt;
     if (Math.abs(diff) <= maxMove) {
       this.cpuY = targetY;
+    } else {
+      this.cpuY += Math.sign(diff) * maxMove;
+    }
+    this.cpuY = Math.max(PADDLE_H / 2, Math.min(FIELD_H - PADDLE_H / 2, this.cpuY));
+    this.cpuPaddle.position.y = this.cpuY;
+  }
+
+  /** Multiplayer: glide right paddle toward target (replaces CPU AI). */
+  private updateRightPaddle(dt: number): void {
+    const diff = this.rightPaddleTargetY - this.cpuY;
+    const maxMove = PADDLE_GLIDE_SPEED * dt;
+    if (Math.abs(diff) <= maxMove) {
+      this.cpuY = this.rightPaddleTargetY;
     } else {
       this.cpuY += Math.sign(diff) * maxMove;
     }
@@ -936,6 +1285,13 @@ export class PongGame {
         yPosition: s.yPos / FIELD_H,
         isTargeted: this.targetIds.includes(s.id),
       })),
+      opponentWords: this.opponentWordSlots.map((s) => ({
+        id: s.id,
+        word: s.word,
+        typed: s.typed,
+        yPosition: s.yPos / FIELD_H,
+        isTargeted: s.isTargeted,
+      })),
       playerPaddleY: this.playerY / FIELD_H,
       cpuPaddleY: this.cpuY / FIELD_H,
       ballX: this.ballX / FIELD_W,
@@ -943,6 +1299,8 @@ export class PongGame {
       gameOver: this.gameOver,
       playerWon: this.playerWon,
       sessionComplete: this.gameOver,
+      side: this.side,
+      mode: this.mode,
     };
     this.callbacks.onStateChange(state);
   }
