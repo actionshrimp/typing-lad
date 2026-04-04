@@ -88,17 +88,27 @@ export class Engine {
   }
 
   nextWord(avoid?: ReadonlySet<string>): string {
-    // Try queue first, skipping avoided words
+    // Check for exact match, duplicate, or prefix conflict with active words
+    const conflicts = (text: string): boolean => {
+      if (!avoid) return false;
+      if (avoid.has(text)) return true;
+      for (const a of avoid) {
+        if (text.startsWith(a) || a.startsWith(text)) return true;
+      }
+      return false;
+    };
+
+    // Try queue first, skipping conflicting words
     while (this.queue.length > 0) {
       const w = this.queue.shift()!;
-      if (!avoid || !avoid.has(w.text)) return w.text;
+      if (!conflicts(w.text)) return w.text;
     }
 
     const now = new Date();
 
     // Try due words first
     const due = this.store.getDueWords(now, 20);
-    const filteredDue = avoid ? due.filter((w) => !avoid.has(w.text)) : due;
+    const filteredDue = avoid ? due.filter((w) => !conflicts(w.text)) : due;
     if (filteredDue.length > 0) {
       this.queue = filteredDue.slice(1);
       return filteredDue[0].text;
@@ -106,7 +116,7 @@ export class Engine {
 
     // New words from current level
     const newWords = this.store.getNewWords(this._currentLevel, 20);
-    const filteredNew = avoid ? newWords.filter((w) => !avoid.has(w.text)) : newWords;
+    const filteredNew = avoid ? newWords.filter((w) => !conflicts(w.text)) : newWords;
     if (filteredNew.length > 0) {
       this.queue = filteredNew.slice(1);
       return filteredNew[0].text;
@@ -116,7 +126,7 @@ export class Engine {
     for (let level = 1; level <= LevelEnum.FullAlpha; level++) {
       if (level === this._currentLevel) continue;
       const words = this.store.getNewWords(level as Level, 20);
-      const filtered = avoid ? words.filter((w) => !avoid.has(w.text)) : words;
+      const filtered = avoid ? words.filter((w) => !conflicts(w.text)) : words;
       if (filtered.length > 0) {
         this.queue = filtered.slice(1);
         return filtered[0].text;
@@ -126,7 +136,7 @@ export class Engine {
     // All words practiced — re-review earliest due (look 365 days ahead)
     const futureDate = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000);
     const allDue = this.store.getDueWords(futureDate, 20);
-    const filteredAll = avoid ? allDue.filter((w) => !avoid.has(w.text)) : allDue;
+    const filteredAll = avoid ? allDue.filter((w) => !conflicts(w.text)) : allDue;
     if (filteredAll.length > 0) {
       this.queue = filteredAll.slice(1);
       return filteredAll[0].text;
