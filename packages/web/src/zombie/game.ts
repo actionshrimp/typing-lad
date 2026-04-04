@@ -19,7 +19,7 @@ export interface ZombieGameState {
 
 export interface ZombieGameCallbacks {
   onStateChange: (state: ZombieGameState) => void;
-  onRequestWord: () => string;
+  onRequestWord: (activeWords: ReadonlySet<string>) => string;
   onWordCompleted: (word: string, typed: string, durationMs: number) => void;
   onWordFailed: (word: string, typed: string, durationMs: number) => void;
 }
@@ -238,7 +238,8 @@ export class ZombieGame {
   }
 
   private spawnZombie(): void {
-    const word = this.callbacks.onRequestWord();
+    const active = new Set(this.zombies.filter((z) => !z.isDying).map((z) => z.word));
+    const word = this.callbacks.onRequestWord(active);
     const group = this.createZombieModel();
 
     // Random x offset

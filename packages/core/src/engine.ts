@@ -87,45 +87,54 @@ export class Engine {
     return this._wordsCompleted >= this._sessionSize;
   }
 
-  nextWord(): string {
-    if (this.queue.length > 0) {
+  nextWord(avoid?: ReadonlySet<string>): string {
+    // Try queue first, skipping avoided words
+    while (this.queue.length > 0) {
       const w = this.queue.shift()!;
-      return w.text;
+      if (!avoid || !avoid.has(w.text)) return w.text;
     }
 
     const now = new Date();
 
     // Try due words first
-    const due = this.store.getDueWords(now, 5);
-    if (due.length > 0) {
-      this.queue = due.slice(1);
-      return due[0].text;
+    const due = this.store.getDueWords(now, 20);
+    const filteredDue = avoid ? due.filter((w) => !avoid.has(w.text)) : due;
+    if (filteredDue.length > 0) {
+      this.queue = filteredDue.slice(1);
+      return filteredDue[0].text;
     }
 
     // New words from current level
-    const newWords = this.store.getNewWords(this._currentLevel, 5);
-    if (newWords.length > 0) {
-      this.queue = newWords.slice(1);
-      return newWords[0].text;
+    const newWords = this.store.getNewWords(this._currentLevel, 20);
+    const filteredNew = avoid ? newWords.filter((w) => !avoid.has(w.text)) : newWords;
+    if (filteredNew.length > 0) {
+      this.queue = filteredNew.slice(1);
+      return filteredNew[0].text;
     }
 
-    // Try other levels
-    for (let level = this._currentLevel + 1; level <= LevelEnum.FullAlpha; level++) {
-      const words = this.store.getNewWords(level as Level, 5);
-      if (words.length > 0) {
-        this.queue = words.slice(1);
-        return words[0].text;
+    // Try other levels (including below current for more variety)
+    for (let level = 1; level <= LevelEnum.FullAlpha; level++) {
+      if (level === this._currentLevel) continue;
+      const words = this.store.getNewWords(level as Level, 20);
+      const filtered = avoid ? words.filter((w) => !avoid.has(w.text)) : words;
+      if (filtered.length > 0) {
+        this.queue = filtered.slice(1);
+        return filtered[0].text;
       }
     }
 
     // All words practiced — re-review earliest due (look 365 days ahead)
     const futureDate = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000);
-    const allDue = this.store.getDueWords(futureDate, 5);
-    if (allDue.length > 0) {
-      this.queue = allDue.slice(1);
-      return allDue[0].text;
+    const allDue = this.store.getDueWords(futureDate, 20);
+    const filteredAll = avoid ? allDue.filter((w) => !avoid.has(w.text)) : allDue;
+    if (filteredAll.length > 0) {
+      this.queue = filteredAll.slice(1);
+      return filteredAll[0].text;
     }
 
+    // Absolute fallback: return any word (duplicates possible if pool exhausted)
+    if (due.length > 0) return due[0].text;
+    if (allDue.length > 0) return allDue[0].text;
     throw new Error("no words available");
   }
 

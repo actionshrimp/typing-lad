@@ -4,7 +4,7 @@ import * as THREE from "three";
 
 export interface PongGameCallbacks {
   onStateChange: (state: PongGameState) => void;
-  onRequestWord: () => string;
+  onRequestWord: (activeWords: ReadonlySet<string>) => string;
   onWordCompleted: (word: string, typed: string, durationMs: number) => void;
 }
 
@@ -231,7 +231,7 @@ export class PongGame {
     const slotSpacing = FIELD_H / (WORD_SLOTS + 1);
     for (let i = 0; i < WORD_SLOTS; i++) {
       const yPos = slotSpacing * (i + 1);
-      const word = this.requestUniqueWord();
+      const word = this.requestWord();
       this.wordSlots.push({
         id: this.nextWordId++,
         word,
@@ -242,14 +242,9 @@ export class PongGame {
     }
   }
 
-  private requestUniqueWord(): string {
-    const existing = new Set(this.wordSlots.map((s) => s.word));
-    for (let attempt = 0; attempt < 20; attempt++) {
-      const word = this.callbacks.onRequestWord();
-      if (!existing.has(word)) return word;
-    }
-    // Fallback: accept whatever we get
-    return this.callbacks.onRequestWord();
+  private requestWord(): string {
+    const active = new Set(this.wordSlots.map((s) => s.word));
+    return this.callbacks.onRequestWord(active);
   }
 
   // --- Public API ---
@@ -708,7 +703,7 @@ export class PongGame {
   private replaceWordSlot(slot: WordSlot): void {
     const idx = this.wordSlots.indexOf(slot);
     if (idx < 0) return;
-    const word = this.requestUniqueWord();
+    const word = this.requestWord();
     this.wordSlots[idx] = {
       id: this.nextWordId++,
       word,

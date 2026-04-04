@@ -29,7 +29,7 @@ export function Pong({ engine, onDone, onEscape }: PongProps) {
 
     const game = new PongGame(canvas, {
       onStateChange: (s) => setState(s),
-      onRequestWord: () => engine.nextWord(),
+      onRequestWord: (active) => engine.nextWord(active),
       onWordCompleted: (word, typed, durationMs) => {
         engine.submitAttempt(word, typed, durationMs);
       },
