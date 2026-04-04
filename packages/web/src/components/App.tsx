@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, Suspense } from "react";
 import {
   Store,
   Engine,
@@ -22,7 +22,9 @@ import { Paragraph } from "./Paragraph";
 import { Summary } from "./Summary";
 import { Stats } from "./Stats";
 
-type ViewState = "home" | "practice" | "paragraph" | "summary" | "stats" | "save-restore";
+type ViewState = "home" | "practice" | "paragraph" | "zombie" | "summary" | "stats" | "save-restore";
+
+const Zombie = React.lazy(() => import("./Zombie").then((m) => ({ default: m.Zombie })));
 
 type SyncStatus = "none" | "synced" | "needs-permission" | "unavailable";
 
@@ -79,7 +81,7 @@ export function App({ store, onSave, initialFileHandle }: AppProps) {
   }, []);
 
   const startPractice = useCallback(
-    (mode: "word" | "paragraph" | "random") => {
+    (mode: "word" | "paragraph" | "zombie" | "random") => {
       const newEngine = new Engine(store);
       setEngine(newEngine);
 
@@ -89,7 +91,9 @@ export function App({ store, onSave, initialFileHandle }: AppProps) {
         return;
       }
 
-      if (mode === "random") {
+      if (mode === "zombie") {
+        setView("zombie");
+      } else if (mode === "random") {
         setView(Math.random() < 0.6 ? "practice" : "paragraph");
       } else {
         setView(mode === "paragraph" ? "paragraph" : "practice");
@@ -109,7 +113,7 @@ export function App({ store, onSave, initialFileHandle }: AppProps) {
   );
 
   const handleModeSelect = useCallback(
-    (mode: "word" | "paragraph") => {
+    (mode: "word" | "paragraph" | "zombie") => {
       startPractice(mode);
     },
     [startPractice]
@@ -127,6 +131,16 @@ export function App({ store, onSave, initialFileHandle }: AppProps) {
   );
 
   const handlePracticeDone = useCallback(
+    (result: SessionResult) => {
+      saveAll();
+      setSessionResult(result);
+      setParagraphResult(undefined);
+      setView("summary");
+    },
+    [saveAll]
+  );
+
+  const handleZombieDone = useCallback(
     (result: SessionResult) => {
       saveAll();
       setSessionResult(result);
@@ -187,6 +201,7 @@ export function App({ store, onSave, initialFileHandle }: AppProps) {
         if (currentView === "stats" || currentView === "save-restore") {
           setView("home");
         }
+        // zombie handles ESC internally via onEscape prop
       }
     }
     document.addEventListener("keydown", handleKeyDown);
@@ -194,7 +209,7 @@ export function App({ store, onSave, initialFileHandle }: AppProps) {
   }, []);
 
   const getActiveTab = (): NavTab => {
-    if (view === "practice" || view === "paragraph") return "practice";
+    if (view === "practice" || view === "paragraph" || view === "zombie") return "practice";
     if (view === "stats") return "stats";
     if (view === "save-restore") return "save-restore";
     return "home";
@@ -203,6 +218,7 @@ export function App({ store, onSave, initialFileHandle }: AppProps) {
   const getActiveMode = (): ActiveMode => {
     if (view === "practice") return "word";
     if (view === "paragraph") return "paragraph";
+    if (view === "zombie") return "zombie";
     return null;
   };
 
@@ -239,6 +255,16 @@ export function App({ store, onSave, initialFileHandle }: AppProps) {
           onDone={handleParagraphDone}
           onEscape={handleEscape}
         />
+      )}
+
+      {view === "zombie" && (
+        <Suspense fallback={<div className="text-text-dim text-sm">Loading Zombie Mode...</div>}>
+          <Zombie
+            engine={engine}
+            onDone={handleZombieDone}
+            onEscape={handleEscape}
+          />
+        </Suspense>
       )}
 
       {view === "summary" && (

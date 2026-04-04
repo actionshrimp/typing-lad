@@ -1,7 +1,7 @@
 import React from "react";
 
 export type NavTab = "home" | "practice" | "stats" | "save-restore";
-export type ActiveMode = "word" | "paragraph" | null;
+export type ActiveMode = "word" | "paragraph" | "zombie" | null;
 
 type SyncStatus = "none" | "synced" | "needs-permission" | "unavailable";
 
@@ -9,7 +9,7 @@ interface LayoutProps {
   activeTab: NavTab;
   activeMode: ActiveMode;
   onNavigate: (tab: NavTab) => void;
-  onModeSelect: (mode: "word" | "paragraph") => void;
+  onModeSelect: (mode: "word" | "paragraph" | "zombie") => void;
   syncStatus: SyncStatus;
   onEnableSync: () => void;
   onDisableSync: () => void;
@@ -96,7 +96,7 @@ export function Layout({ activeTab, activeMode, onNavigate, onModeSelect, syncSt
           </button>
           <button
             onClick={() => onModeSelect("paragraph")}
-            className={`flex items-center gap-2 px-3 py-2 text-sm rounded-l transition-colors text-left ${
+            className={`flex items-center gap-2 px-3 py-2 text-sm rounded-l transition-colors mb-1 text-left ${
               activeMode === "paragraph"
                 ? "text-accent bg-accent-dim border-r-2 border-accent"
                 : "text-text-secondary hover:text-text-primary hover:bg-white/5"
@@ -104,6 +104,17 @@ export function Layout({ activeTab, activeMode, onNavigate, onModeSelect, syncSt
           >
             <span className="material-symbols-outlined text-base">article</span>
             Paragraph Mode
+          </button>
+          <button
+            onClick={() => onModeSelect("zombie")}
+            className={`flex items-center gap-2 px-3 py-2 text-sm rounded-l transition-colors text-left ${
+              activeMode === "zombie"
+                ? "text-correct bg-correct/10 border-r-2 border-correct"
+                : "text-text-secondary hover:text-text-primary hover:bg-white/5"
+            }`}
+          >
+            <span className="material-symbols-outlined text-base">skull</span>
+            Zombie Mode
           </button>
         </aside>
 

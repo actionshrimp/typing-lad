@@ -20,7 +20,7 @@ export interface SessionRecord {
   wordsPracticed: number;
   avgWpm: number;
   accuracy: number;
-  mode: "word" | "paragraph";
+  mode: "word" | "paragraph" | "zombie";
 }
 
 export interface Stats {

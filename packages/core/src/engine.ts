@@ -37,7 +37,7 @@ export interface SessionResult {
   endedAt: string;
   perWordWpm: number[];
   totalErrors: number;
-  mode: "word" | "paragraph";
+  mode: "word" | "paragraph" | "zombie";
 }
 
 export class Engine {
@@ -185,7 +185,7 @@ export class Engine {
     };
   }
 
-  endSession(): SessionResult {
+  endSession(mode: "word" | "paragraph" | "zombie" = "word"): SessionResult {
     const now = new Date().toISOString();
     const result: SessionResult = {
       wordsPracticed: this._wordsCompleted,
@@ -196,7 +196,7 @@ export class Engine {
       endedAt: now,
       perWordWpm: [...this.perWordWpms],
       totalErrors: this.sessionErrors,
-      mode: "word",
+      mode,
     };
 
     if (this._wordsCompleted > 0) {
@@ -209,7 +209,7 @@ export class Engine {
         wordsPracticed: this._wordsCompleted,
         avgWpm: result.avgWpm,
         accuracy: result.accuracy,
-        mode: "word",
+        mode,
       };
       this.store.saveSession(record);
     }

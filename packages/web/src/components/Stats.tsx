@@ -279,6 +279,7 @@ export function Stats({ store, onBack, onExport, onImport }: StatsProps) {
                   </td>
                   <td className="py-2">
                     <span className={`px-1.5 py-0.5 rounded text-xs ${
+                      s.mode === "zombie" ? "bg-correct/10 text-correct" :
                       s.mode === "word" ? "bg-accent/10 text-accent" : "bg-info/10 text-info"
                     }`}>
                       {s.mode ?? "word"}

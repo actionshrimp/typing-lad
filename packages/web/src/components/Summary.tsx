@@ -54,7 +54,8 @@ export function Summary({ store, sessionResult, paragraphResult, onContinue, onR
   const startedAt = sessionResult?.startedAt ?? paragraphResult?.startedAt ?? "";
   const endedAt = sessionResult?.endedAt ?? paragraphResult?.endedAt ?? "";
   const duration = formatDuration(startedAt, endedAt);
-  const mode = sessionResult ? "word" : "paragraph";
+  const mode = sessionResult?.mode ?? "paragraph";
+  const isZombie = mode === "zombie";
 
   // Velocity chart data (word mode only)
   const velocityData = sessionResult?.perWordWpm?.map((wpm, i) => ({
@@ -65,11 +66,13 @@ export function Summary({ store, sessionResult, paragraphResult, onContinue, onR
   return (
     <div className="max-w-3xl mx-auto">
       {/* Header */}
-      <div className="border-l-4 border-accent pl-4 mb-8">
-        <div className="text-[10px] font-semibold tracking-[0.3em] text-accent uppercase mb-1">
-          Session Complete
+      <div className={`border-l-4 ${isZombie ? "border-correct" : "border-accent"} pl-4 mb-8`}>
+        <div className={`text-[10px] font-semibold tracking-[0.3em] uppercase mb-1 ${isZombie ? "text-correct" : "text-accent"}`}>
+          {isZombie ? "Mission Report" : "Session Complete"}
         </div>
-        <h1 className="text-2xl font-bold text-text-primary">Session Summary</h1>
+        <h1 className="text-2xl font-bold text-text-primary">
+          {isZombie ? "Zombies Eliminated" : "Session Summary"}
+        </h1>
         <p className="text-xs text-text-dim mt-1">
           {new Date(endedAt || Date.now()).toLocaleString()}
         </p>
@@ -78,23 +81,23 @@ export function Summary({ store, sessionResult, paragraphResult, onContinue, onR
       {/* Bento metrics */}
       <div className="grid grid-cols-4 gap-3 mb-8">
         <MetricCard
-          label="Avg Velocity"
+          label={isZombie ? "Avg Kill Speed" : "Avg Velocity"}
           value={`${avgWpm.toFixed(0)}`}
           unit="WPM"
         />
         <MetricCard
-          label="Precision Rate"
+          label={isZombie ? "Hit Accuracy" : "Precision Rate"}
           value={`${(accuracy * 100).toFixed(0)}`}
           unit="%"
           color={accuracy >= 0.95 ? "text-correct" : accuracy >= 0.8 ? "text-yellow-400" : "text-incorrect"}
         />
         <MetricCard
-          label="Total Errors"
-          value={`${totalErrors}`}
+          label={isZombie ? "Damage Taken" : "Total Errors"}
+          value={isZombie ? `${3 - (sessionResult?.totalErrors ?? 0) >= 0 ? totalErrors : totalErrors}` : `${totalErrors}`}
           color={totalErrors === 0 ? "text-correct" : "text-incorrect"}
         />
         <MetricCard
-          label="Duration"
+          label={isZombie ? "Survival Time" : "Duration"}
           value={duration}
         />
       </div>

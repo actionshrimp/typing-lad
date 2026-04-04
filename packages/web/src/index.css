@@ -74,3 +74,13 @@
 .cursor-blink {
   animation: blink 1s step-end infinite;
 }
+
+/* Damage flash for zombie mode */
+@keyframes damage-flash {
+  0% { opacity: 0.6; }
+  100% { opacity: 0; }
+}
+.damage-flash {
+  background: radial-gradient(ellipse at center, transparent 40%, rgba(255, 70, 114, 0.5) 100%);
+  animation: damage-flash 0.3s ease-out forwards;
+}
