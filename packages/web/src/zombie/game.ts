@@ -168,8 +168,11 @@ export class ZombieGame {
             this.callbacks.onWordCompleted(zombie.word, zombie.typed, duration);
             this.killZombie(zombie);
           }
+        } else {
+          // Wrong key: reset progress and untarget
+          zombie.typed = "";
+          this.targetId = null;
         }
-        // Wrong key: ignore (no penalty)
       }
     } else {
       // Try to target a zombie by first letter (closest first)
