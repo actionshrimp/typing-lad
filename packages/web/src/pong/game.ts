@@ -564,11 +564,29 @@ export class PongGame {
           this.replaceOpponentWord((msg as any).slotIndex, (msg as any).newWord);
           this.setOpponentPaddleTarget((msg as any).paddleTargetY);
           break;
-        case "hit":
-          // Only accept hits during active play — discard stale hits from previous rally
-          if (!this.serving && !this.waitingForRemoteServe) {
-            this.pendingRemoteHit = msg as HitMsg;
-          }
+        case "hit": {
+          // Apply hit immediately — snap ball to host's authoritative state
+          const hitMsg = msg as HitMsg;
+          this.ballX = hitMsg.ballX;
+          this.ballY = hitMsg.ballY;
+          this.ballVx = hitMsg.ballVx;
+          this.ballVy = hitMsg.ballVy;
+          this.rallyHits = hitMsg.rallyHits;
+          this.ballSpeed = Math.min(
+            BALL_SPEED_INIT + this.rallyHits * BALL_SPEED_INCREMENT,
+            BALL_SPEED_MAX
+          );
+          this.serving = false;
+          this.waitingForRemoteServe = false;
+          this.playPaddleHit();
+          this.spawnBounceParticles(this.ballX, this.ballY);
+          this.ball.position.set(this.ballX, this.ballY, 0);
+          this.ballGlow.position.set(this.ballX, this.ballY, -1);
+          break;
+        }
+        case "start":
+        case "rematch":
+          // Handled by the React component, not the game engine
           break;
         case "serve": {
           // Host is authoritative — sync scores from serve message
@@ -638,6 +656,32 @@ export class PongGame {
     this.resetBall(toLeft);
   }
 
+  /** Reset game state for a rematch without disposing renderer/scene. */
+  restart(): void {
+    this.playerScore = 0;
+    this.cpuScore = 0;
+    this.gameOver = false;
+    this.playerWon = false;
+    this.rallyHits = 0;
+    this.pendingRemoteHit = null;
+    this.incomingMessages = [];
+    this.serving = true;
+    this.waitingForRemoteServe = false;
+    this.ballX = FIELD_W / 2;
+    this.ballY = FIELD_H / 2;
+    this.ballVx = 0;
+    this.ballVy = 0;
+    this.ballSpeed = BALL_SPEED_INIT;
+    this.ball.position.set(this.ballX, this.ballY, 0);
+    this.ballGlow.position.set(this.ballX, this.ballY, -1);
+    // Re-init word slots
+    this.targetIds = [];
+    this.typedPrefix = "";
+    this.initWordSlots();
+    this.opponentWordSlots = [];
+    this.emitState();
+  }
+
   // --- Animation Loop ---
 
   private tick = (): void => {
@@ -651,15 +695,15 @@ export class PongGame {
 
     const realDt = Math.min(this.clock.getDelta(), 0.05); // cap dt
 
-    // Determine target time scale
-    // In multiplayer, only slow when ball approaches YOUR paddle (remote hits arrive at real speed)
-    // In solo, slow for both paddles
+    // Bullet time: slow when ball approaches a human player's paddle
+    // Solo: only slow when heading toward player 1 (left paddle)
+    // Multiplayer: slow when approaching either paddle (in that paddle's half)
     const approachingLeft = this.ballX < FIELD_W / 2 && this.ballVx < 0;
     const approachingRight = this.ballX > FIELD_W / 2 && this.ballVx > 0;
     const isSlow = !this.serving && !this.gameOver && (
       this.mode === "solo"
-        ? (approachingLeft || approachingRight)
-        : this.side === "left" ? approachingLeft : approachingRight
+        ? approachingLeft
+        : (approachingLeft || approachingRight)
     );
     this.targetTimeScale = isSlow ? this.SLOW_SCALE : this.FAST_SCALE;
 
@@ -823,14 +867,6 @@ export class PongGame {
             continue;
           }
         }
-      } else if (this.pendingRemoteHit && this.ballVx < 0) {
-        // Opponent's paddle (left) — apply deferred hit when ball reaches paddle zone
-        const playerRight = PADDLE_MARGIN + PADDLE_W / 2;
-        if (nx - BALL_R <= playerRight) {
-          this.applyPendingHit();
-          remaining = 0;
-          continue;
-        }
       }
 
       // CPU/Right paddle collision (right)
@@ -874,14 +910,6 @@ export class PongGame {
             continue;
           }
         }
-      } else if (this.pendingRemoteHit && this.ballVx > 0) {
-        // Opponent's paddle (right) — apply deferred hit when ball reaches paddle zone
-        const cpuLeft = FIELD_W - PADDLE_MARGIN - PADDLE_W / 2;
-        if (nx + BALL_R >= cpuLeft) {
-          this.applyPendingHit();
-          remaining = 0;
-          continue;
-        }
       }
 
       // No collision, advance
@@ -904,6 +932,11 @@ export class PongGame {
         if (this.cpuScore >= WIN_SCORE) {
           this.gameOver = true;
           this.playerWon = false;
+          // Emit final serve with zero velocity so client learns the final score
+          this.callbacks.onServe?.({
+            type: "serve", ballVx: 0, ballVy: 0,
+            leftScore: this.playerScore, rightScore: this.cpuScore,
+          });
         } else {
           this.resetBall(false); // left was scored against, left serves
         }
@@ -918,6 +951,11 @@ export class PongGame {
         if (this.playerScore >= WIN_SCORE) {
           this.gameOver = true;
           this.playerWon = true;
+          // Emit final serve with zero velocity so client learns the final score
+          this.callbacks.onServe?.({
+            type: "serve", ballVx: 0, ballVy: 0,
+            leftScore: this.playerScore, rightScore: this.cpuScore,
+          });
         } else {
           this.resetBall(true); // right was scored against, right serves
         }

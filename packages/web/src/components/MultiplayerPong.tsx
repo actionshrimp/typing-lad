@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import type { Engine, SessionResult } from "@typing-lad/core";
 import { PongGame, type PongGameState } from "../pong/game";
 import type { PongNetLike } from "../pong/net";
@@ -18,14 +18,30 @@ export function MultiplayerPong({ engine, isPlayer1, net, onDone, onEscape }: Mu
   const gameRef = useRef<PongGame | null>(null);
   const [state, setState] = useState<PongGameState | null>(null);
   const [disconnected, setDisconnected] = useState(false);
+  const [rematchSent, setRematchSent] = useState(false);
+  const [rematchReceived, setRematchReceived] = useState(false);
   const doneRef = useRef(false);
 
   const onDoneRef = useRef(onDone);
   onDoneRef.current = onDone;
   const onEscapeRef = useRef(onEscape);
   onEscapeRef.current = onEscape;
+  const netRef = useRef(net);
+  netRef.current = net;
 
   const side = isPlayer1 ? "left" as const : "right" as const;
+
+  // Start a rematch: reset game, send hello with new words
+  const startRematch = useCallback(() => {
+    const game = gameRef.current;
+    if (!game) return;
+    game.restart();
+    engine.startSession();
+    doneRef.current = false;
+    setRematchSent(false);
+    setRematchReceived(false);
+    netRef.current.send({ type: "hello", words: game.getMyWords() });
+  }, [engine]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -60,7 +76,12 @@ export function MultiplayerPong({ engine, isPlayer1, net, onDone, onEscape }: Mu
     net.send({ type: "hello", words: game.getMyWords() });
 
     // Wire incoming messages — game processes them in order during tick
+    // Rematch messages are intercepted here instead of being forwarded to the game
     net.onMessage = (msg: PeerMessage) => {
+      if (msg.type === "rematch") {
+        setRematchReceived(true);
+        return;
+      }
       gameRef.current?.receiveMessage(msg);
     };
 
@@ -106,15 +127,22 @@ export function MultiplayerPong({ engine, isPlayer1, net, onDone, onEscape }: Mu
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, []);
 
-  // Session end
+  // Session end — only fire onDone in solo mode (this component is multiplayer-only,
+  // so we just end the engine session without auto-navigating away)
   useEffect(() => {
     if (!state) return;
     if (state.sessionComplete && !doneRef.current) {
       doneRef.current = true;
-      const result = engine.endSession("pong");
-      setTimeout(() => onDoneRef.current(result), 1500);
+      engine.endSession("pong");
     }
   }, [state?.sessionComplete, engine]);
+
+  // Auto-start rematch when both players have agreed
+  useEffect(() => {
+    if (rematchSent && rematchReceived) {
+      startRematch();
+    }
+  }, [rematchSent, rematchReceived, startRematch]);
 
   // Compute field rect for word label positioning
   const fieldRect = gameRef.current?.getFieldRect() ?? { left: 0, top: 0, width: 800, height: 500 };
@@ -208,11 +236,36 @@ export function MultiplayerPong({ engine, isPlayer1, net, onDone, onEscape }: Mu
                     <div className={`text-4xl font-bold mb-2 ${iWon ? "text-correct" : "text-incorrect"}`}>
                       {iWon ? "YOU WIN!" : "YOU LOSE"}
                     </div>
-                    <div className="text-lg text-text-secondary font-mono">
+                    <div className="text-lg text-text-secondary font-mono mb-6">
                       <span className="text-accent">{state.playerScore}</span>
                       {" — "}
                       <span className="text-incorrect">{state.cpuScore}</span>
                     </div>
+                    {!disconnected && (
+                      <div className="flex gap-3">
+                        {rematchSent ? (
+                          <div className="px-6 py-2 rounded-lg bg-surface text-text-secondary font-semibold">
+                            Waiting for opponent...
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => {
+                              setRematchSent(true);
+                              netRef.current.send({ type: "rematch" });
+                            }}
+                            className="px-6 py-2 rounded-lg bg-accent text-surface font-semibold hover:brightness-110 transition-all"
+                          >
+                            Play Again
+                          </button>
+                        )}
+                        <button
+                          onClick={() => onEscapeRef.current()}
+                          className="px-6 py-2 rounded-lg bg-surface-alt text-text-primary font-semibold hover:brightness-110 transition-all"
+                        >
+                          Back to Menu
+                        </button>
+                      </div>
+                    )}
                   </>
                 );
               })()}

@@ -12,7 +12,8 @@
     "dev:web": "npm run dev --workspace=packages/web",
     "test:tui": "vitest run --config tests/tui/vitest.config.ts",
     "test:web": "playwright test --config tests/web/playwright.config.ts",
-    "pong-bot": "tsx scripts/pong-bot.ts"
+    "pong-bot": "tsx scripts/pong-bot.ts",
+    "test:pong": "vitest run --config tests/pong/vitest.config.ts"
   },
   "devDependencies": {
     "@playwright/test": "^1.52.0",

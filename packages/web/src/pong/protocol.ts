@@ -46,10 +46,16 @@ export interface StartMsg {
   type: "start";
 }
 
+// Rematch request (play again with same room)
+export interface RematchMsg {
+  type: "rematch";
+}
+
 export type PeerMessage =
   | HelloMsg
   | TypingMsg
   | WordDoneMsg
   | HitMsg
   | ServeMsg
-  | StartMsg;
+  | StartMsg
+  | RematchMsg;
