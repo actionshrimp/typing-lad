@@ -214,11 +214,12 @@ export class ZombieGame {
   private updateSpawning(dt: number): void {
     if (this.gameOver || this.sessionComplete) return;
 
-    const maxOnScreen = Math.min(2 + Math.floor(this.kills / 5), 5);
+    const remainingKills = KILL_TARGET - this.kills;
+    const maxOnScreen = Math.min(2 + Math.floor(this.kills / 5), 5, remainingKills);
     const alive = this.zombies.filter((z) => !z.isDying).length;
 
     // Instant spawn if no alive zombies on screen
-    if (alive === 0) {
+    if (alive === 0 && maxOnScreen > 0) {
       this.spawnZombie();
       this.spawnTimer = 0.3;
       return;
