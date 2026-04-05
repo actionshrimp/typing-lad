@@ -25,26 +25,12 @@ const CHARSET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
 const CODE_LEN = 4;
 const PEER_PREFIX = "typing-lad-";
 
-// ICE servers: STUN for direct connections, TURN as relay fallback
-// (free TURN via metered.ca — sufficient for a hobby project)
+// STUN servers for ICE candidate discovery (direct peer-to-peer).
+// No TURN relay — connections across symmetric NATs may fail.
+// For cross-NAT support, add a TURN server (e.g. metered.ca free tier).
 const ICE_SERVERS: RTCIceServer[] = [
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
-  {
-    urls: "turn:openrelay.metered.ca:80",
-    username: "openrelayproject",
-    credential: "openrelayproject",
-  },
-  {
-    urls: "turn:openrelay.metered.ca:443",
-    username: "openrelayproject",
-    credential: "openrelayproject",
-  },
-  {
-    urls: "turn:openrelay.metered.ca:443?transport=tcp",
-    username: "openrelayproject",
-    credential: "openrelayproject",
-  },
 ];
 
 function randomCode(): string {
